@@ -1,10 +1,11 @@
 using Polly.Telemetry;
+using Polly.Timeout;
 
 namespace Polly.Core.Tests.Telemetry;
 
 public class ResilienceStrategyTelemetryTests
 {
-    private readonly List<TelemetryEventArguments<object, object>> _args = new();
+    private readonly List<TelemetryEventArguments<object, object>> _args = [];
     private readonly ResilienceTelemetrySource _source;
     private readonly ResilienceStrategyTelemetry _sut;
 
@@ -13,7 +14,7 @@ public class ResilienceStrategyTelemetryTests
         _source = new ResilienceTelemetrySource(
             "builder",
             "instance",
-            "strategy-name");
+            "strategy_name");
 
         _sut = TestUtilities.CreateResilienceTelemetry(args => _args.Add(args));
     }
@@ -28,23 +29,25 @@ public class ResilienceStrategyTelemetryTests
     [Fact]
     public void Report_NoOutcome_OK()
     {
-        _sut.Report(new(ResilienceEventSeverity.Warning, "dummy-event"), ResilienceContextPool.Shared.Get(), new TestArguments());
+        var context = ResilienceContextPool.Shared.Get();
+
+        _sut.Report(new(ResilienceEventSeverity.Warning, "dummy-event"), context, new TestArguments());
 
         _args.Should().HaveCount(1);
         var args = _args.Single();
         args.Event.EventName.Should().Be("dummy-event");
         args.Event.Severity.Should().Be(ResilienceEventSeverity.Warning);
         args.Outcome.Should().BeNull();
-        args.Source.StrategyName.Should().Be("strategy-name");
+        args.Source.StrategyName.Should().Be("strategy_name");
         args.Arguments.Should().BeOfType<TestArguments>();
         args.Outcome.Should().BeNull();
-        args.Context.Should().NotBeNull();
+        args.Context.Should().Be(context);
     }
 
     [Fact]
     public void ResiliencePipelineTelemetry_NoDiagnosticSource_Ok()
     {
-        var source = new ResilienceTelemetrySource("builder", "instance", "strategy-name");
+        var source = new ResilienceTelemetrySource("builder", "instance", "strategy_name");
         var sut = new ResilienceStrategyTelemetry(source, null);
         var context = ResilienceContextPool.Shared.Get();
 
@@ -62,7 +65,7 @@ public class ResilienceStrategyTelemetryTests
         var args = _args.Single();
         args.Event.EventName.Should().Be("dummy-event");
         args.Event.Severity.Should().Be(ResilienceEventSeverity.Warning);
-        args.Source.StrategyName.Should().Be("strategy-name");
+        args.Source.StrategyName.Should().Be("strategy_name");
         args.Arguments.Should().BeOfType<TestArguments>();
         args.Outcome.Should().NotBeNull();
         args.Outcome!.Value.Result.Should().Be(99);
@@ -74,7 +77,7 @@ public class ResilienceStrategyTelemetryTests
     {
         var context = ResilienceContextPool.Shared.Get();
         _sut.Report(new(ResilienceEventSeverity.None, "dummy-event"), context, Outcome.FromResult(99), new TestArguments());
-        _sut.Report(new(ResilienceEventSeverity.None, "dummy-event"), ResilienceContextPool.Shared.Get(), new TestArguments());
+        _sut.Report(new(ResilienceEventSeverity.None, "dummy-event"), context, new TestArguments());
 
         _args.Should().BeEmpty();
     }
@@ -90,8 +93,29 @@ public class ResilienceStrategyTelemetryTests
            .Should()
            .NotThrow();
 
-        sut.Invoking(s => s.Report(new(ResilienceEventSeverity.None, "dummy-event"), ResilienceContextPool.Shared.Get(), new TestArguments()))
+        sut.Invoking(s => s.Report(new(ResilienceEventSeverity.None, "dummy-event"), context, new TestArguments()))
            .Should()
            .NotThrow();
+    }
+
+    [Fact]
+    public void SetTelemetrySource_Ok()
+    {
+        var sut = new ResilienceStrategyTelemetry(_source, null);
+        var exception = new TimeoutRejectedException();
+
+        sut.SetTelemetrySource(exception);
+
+        exception.TelemetrySource.Should().Be(_source);
+    }
+
+    [Fact]
+    public void SetTelemetrySource_ShouldThrow()
+    {
+        ExecutionRejectedException? exception = null;
+
+        _sut.Invoking(s => s.SetTelemetrySource(exception!))
+            .Should()
+            .Throw<ArgumentNullException>();
     }
 }

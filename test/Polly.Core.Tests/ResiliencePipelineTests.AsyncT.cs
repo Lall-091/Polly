@@ -4,10 +4,8 @@ namespace Polly.Core.Tests;
 
 public partial class ResiliencePipelineTests
 {
-    public static IEnumerable<object[]> ExecuteAsyncT_EnsureCorrectBehavior_Data()
-    {
-        return ConvertExecuteParameters(ExecuteAsyncT_EnsureCorrectBehavior_ExecuteParameters);
-    }
+    public static IEnumerable<object[]> ExecuteAsyncT_EnsureCorrectBehavior_Data() =>
+        ConvertExecuteParameters(ExecuteAsyncT_EnsureCorrectBehavior_ExecuteParameters);
 
     private static IEnumerable<ExecuteParameters> ExecuteAsyncT_EnsureCorrectBehavior_ExecuteParameters()
     {
@@ -54,7 +52,7 @@ public partial class ResiliencePipelineTests
         {
             context.IsSynchronous.Should().BeFalse();
             context.IsVoid.Should().BeFalse();
-            context.ResultType.Should().Be(typeof(long));
+            context.ResultType.Should().Be<long>();
             context.ContinueOnCapturedContext.Should().BeFalse();
         }
 
@@ -67,8 +65,10 @@ public partial class ResiliencePipelineTests
         static void AssertContextInitialized(ResilienceContext context) => context.IsInitialized.Should().BeTrue();
     }
 
-    [MemberData(nameof(ExecuteAsyncT_EnsureCorrectBehavior_Data))]
     [Theory]
+#pragma warning disable xUnit1042 // The member referenced by the MemberData attribute returns untyped data rows
+    [MemberData(nameof(ExecuteAsyncT_EnsureCorrectBehavior_Data))]
+#pragma warning restore xUnit1042 // The member referenced by the MemberData attribute returns untyped data rows
     public async Task ExecuteAsyncT_Ok(ExecuteParameters parameters)
     {
         ResilienceContext? context = null;
@@ -91,9 +91,11 @@ public partial class ResiliencePipelineTests
     [Fact]
     public async Task ExecuteAsync_T_EnsureCallStackPreserved()
     {
+        var context = ResilienceContextPool.Shared.Get();
+
         await AssertStackTrace(s => s.ExecuteAsync(_ => MyThrowingMethod()));
-        await AssertStackTrace(s => s.ExecuteAsync(_ => MyThrowingMethod(), ResilienceContextPool.Shared.Get()));
-        await AssertStackTrace(s => s.ExecuteAsync((_, _) => MyThrowingMethod(), ResilienceContextPool.Shared.Get(), "state"));
+        await AssertStackTrace(s => s.ExecuteAsync(_ => MyThrowingMethod(), context));
+        await AssertStackTrace(s => s.ExecuteAsync((_, _) => MyThrowingMethod(), context, "state"));
         await AssertStackTrace(s => s.ExecuteAsync((_, _) => MyThrowingMethod(), "state"));
 
         static async ValueTask AssertStackTrace(Func<ResiliencePipeline, ValueTask<string>> execute)
@@ -121,7 +123,7 @@ public partial class ResiliencePipelineTests
         {
             state.Should().Be("state");
             context.IsSynchronous.Should().BeFalse();
-            context.ResultType.Should().Be(typeof(int));
+            context.ResultType.Should().Be<int>();
             return Outcome.FromResultAsValueTask(12345);
         },
         ResilienceContextPool.Shared.Get(),

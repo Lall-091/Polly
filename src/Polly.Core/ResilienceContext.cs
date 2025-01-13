@@ -61,23 +61,24 @@ public sealed class ResilienceContext
     /// <summary>
     /// Gets the custom properties attached to the context.
     /// </summary>
-    public ResilienceProperties Properties { get; internal set; } = new();
+    public ResilienceProperties Properties { get; } = new();
 
-    internal void InitializeFrom(ResilienceContext context)
+    internal void InitializeFrom(ResilienceContext context, CancellationToken cancellationToken)
     {
         OperationKey = context.OperationKey;
         ResultType = context.ResultType;
         IsSynchronous = context.IsSynchronous;
         CancellationToken = context.CancellationToken;
         ContinueOnCapturedContext = context.ContinueOnCapturedContext;
+        CancellationToken = cancellationToken;
+        Properties.AddOrReplaceProperties(context.Properties);
     }
 
+#pragma warning disable S3236 // Remove this argument from the method call; it hides the caller information.
     [ExcludeFromCodeCoverage]
     [Conditional("DEBUG")]
-    internal void AssertInitialized()
-    {
-        Debug.Assert(IsInitialized, "The resilience context is not initialized.");
-    }
+    internal void AssertInitialized() => Debug.Assert(IsInitialized, "The resilience context is not initialized.");
+#pragma warning restore S3236 // Remove this argument from the method call; it hides the caller information.
 
     internal ResilienceContext Initialize<TResult>(bool isSynchronous)
     {

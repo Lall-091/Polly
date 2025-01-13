@@ -5,7 +5,7 @@ public class ResultTtlSpecs
     [Fact]
     public void Should_throw_when_func_is_null()
     {
-        Action configure = () => new ResultTtl<object>((Func<object?, Ttl>)null!);
+        Action configure = () => _ = new ResultTtl<object>((Func<object?, Ttl>)null!);
 
         configure.Should().Throw<ArgumentNullException>().And.ParamName.Should().Be("ttlFunc");
     }
@@ -13,7 +13,7 @@ public class ResultTtlSpecs
     [Fact]
     public void Should_throw_when_func_is_null_using_context()
     {
-        Action configure = () => new ResultTtl<object>((Func<Context, object?, Ttl>)null!);
+        Action configure = () => _ = new ResultTtl<object>((Func<Context, object?, Ttl>)null!);
 
         configure.Should().Throw<ArgumentNullException>().And.ParamName.Should().Be("ttlFunc");
     }
@@ -21,7 +21,7 @@ public class ResultTtlSpecs
     [Fact]
     public void Should_not_throw_when_func_is_set()
     {
-        Action configure = () => new ResultTtl<object>(_ => new Ttl());
+        Action configure = () => _ = new ResultTtl<object>(_ => default);
 
         configure.Should().NotThrow();
     }
@@ -29,7 +29,7 @@ public class ResultTtlSpecs
     [Fact]
     public void Should_not_throw_when_func_is_set_using_context()
     {
-        Action configure = () => new ResultTtl<object>((_, _) => new Ttl());
+        Action configure = () => _ = new ResultTtl<object>((_, _) => default);
 
         configure.Should().NotThrow();
     }
@@ -50,14 +50,14 @@ public class ResultTtlSpecs
     [Fact]
     public void Should_return_func_result_using_context()
     {
-        const string specialKey = "specialKey";
+        const string SpecialKey = "specialKey";
 
         TimeSpan ttl = TimeSpan.FromMinutes(1);
-        Func<Context, dynamic?, Ttl> func = (context, result) => context.OperationKey == specialKey ? new Ttl(TimeSpan.Zero) : new Ttl(result!.Ttl);
+        Func<Context, dynamic?, Ttl> func = (context, result) => context.OperationKey == SpecialKey ? new Ttl(TimeSpan.Zero) : new Ttl(result!.Ttl);
 
         ResultTtl<dynamic> ttlStrategy = new ResultTtl<dynamic>(func);
 
         ttlStrategy.GetTtl(new Context("someOperationKey"), new { Ttl = ttl }).Timespan.Should().Be(ttl);
-        ttlStrategy.GetTtl(new Context(specialKey), new { Ttl = ttl }).Timespan.Should().Be(TimeSpan.Zero);
+        ttlStrategy.GetTtl(new Context(SpecialKey), new { Ttl = ttl }).Timespan.Should().Be(TimeSpan.Zero);
     }
 }

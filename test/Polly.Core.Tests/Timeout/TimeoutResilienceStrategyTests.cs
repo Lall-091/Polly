@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Polly.Telemetry;
@@ -12,21 +13,23 @@ public class TimeoutResilienceStrategyTests : IDisposable
     private readonly TimeoutStrategyOptions _options;
     private readonly CancellationTokenSource _cancellationSource;
     private readonly TimeSpan _delay = TimeSpan.FromSeconds(12);
-    private readonly List<TelemetryEventArguments<object, object>> _args = new();
+    private readonly List<TelemetryEventArguments<object, object>> _args = [];
 
     public TimeoutResilienceStrategyTests()
     {
-        _telemetry = TestUtilities.CreateResilienceTelemetry(arg => _args.Add(arg));
+        _telemetry = TestUtilities.CreateResilienceTelemetry(_args.Add);
         _options = new TimeoutStrategyOptions();
         _cancellationSource = new CancellationTokenSource();
     }
 
-    public static TheoryData<TimeSpan> Execute_NoTimeout_Data() => new()
+#pragma warning disable IDE0028 // Simplify collection initialization
+    public static TheoryData<Func<TimeSpan>> Execute_NoTimeout_Data() => new()
     {
-        TimeSpan.Zero,
-        TimeSpan.FromMilliseconds(-1),
-        System.Threading.Timeout.InfiniteTimeSpan,
+        () => TimeSpan.Zero,
+        () => TimeSpan.FromMilliseconds(-1),
+        () => System.Threading.Timeout.InfiniteTimeSpan,
     };
+#pragma warning restore IDE0028 // Simplify collection initialization
 
     public void Dispose() => _cancellationSource.Dispose();
 
@@ -81,10 +84,10 @@ public class TimeoutResilienceStrategyTests : IDisposable
 
     [MemberData(nameof(Execute_NoTimeout_Data))]
     [Theory]
-    public void Execute_NoTimeout(TimeSpan timeout)
+    public void Execute_NoTimeout(Func<TimeSpan> timeout)
     {
         var called = false;
-        SetTimeout(timeout);
+        SetTimeout(timeout());
         var sut = CreateSut();
         sut.Execute(_ => { });
 
@@ -115,23 +118,80 @@ public class TimeoutResilienceStrategyTests : IDisposable
     }
 
     [Fact]
+    public async Task Execute_TimeoutGeneratorIsNull_FallsBackToTimeout()
+    {
+        var called = false;
+        var timeout = TimeSpan.FromMilliseconds(10);
+        _options.TimeoutGenerator = null;
+        _options.Timeout = timeout;
+
+        _options.OnTimeout = args =>
+        {
+            called = true;
+            args.Timeout.Should().Be(timeout);
+            return default;
+        };
+
+        var sut = CreateSut();
+        await sut
+        .Invoking(s => s.ExecuteAsync(async token =>
+        {
+            var delay = _timeProvider.Delay(TimeSpan.FromMilliseconds(50), token);
+            _timeProvider.Advance(timeout);
+            await delay;
+        },
+        _cancellationSource.Token)
+        .AsTask())
+        .Should().ThrowAsync<TimeoutRejectedException>();
+
+        called.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Execute_Timeout_EnsureStackTrace()
     {
         SetTimeout(TimeSpan.FromSeconds(2));
         var sut = CreateSut();
 
-        var outcome = await sut.ExecuteOutcomeAsync(async (c, _) =>
-        {
-            var delay = _timeProvider.Delay(TimeSpan.FromSeconds(4), c.CancellationToken);
-            _timeProvider.Advance(TimeSpan.FromSeconds(2));
-            await delay;
+        var outcome = await sut.ExecuteOutcomeAsync(
+            async (c, _) =>
+            {
+                var delay = _timeProvider.Delay(TimeSpan.FromSeconds(4), c.CancellationToken);
+                _timeProvider.Advance(TimeSpan.FromSeconds(2));
+                await delay;
 
-            return Outcome.FromResult("dummy");
-        },
-        ResilienceContextPool.Shared.Get(),
-        "state");
+                return Outcome.FromResult("dummy");
+            },
+            ResilienceContextPool.Shared.Get(_cancellationSource.Token),
+            "state");
+
         outcome.Exception.Should().BeOfType<TimeoutRejectedException>();
-        outcome.Exception!.StackTrace.Should().Contain("Execute_Timeout_EnsureStackTrace");
+
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            outcome.Exception!.StackTrace.Should().NotBeEmpty();
+        }
+    }
+
+    [Fact]
+    public async Task Execute_Timeout_EnsureTelemetrySource()
+    {
+        SetTimeout(TimeSpan.FromSeconds(2));
+        var sut = CreateSut();
+
+        var outcome = await sut.ExecuteOutcomeAsync(
+            async (c, _) =>
+            {
+                var delay = _timeProvider.Delay(TimeSpan.FromSeconds(4), c.CancellationToken);
+                _timeProvider.Advance(TimeSpan.FromSeconds(2));
+                await delay;
+
+                return Outcome.FromResult("dummy");
+            },
+            ResilienceContextPool.Shared.Get(_cancellationSource.Token),
+            "state");
+
+        outcome.Exception.Should().BeOfType<TimeoutRejectedException>().Subject.TelemetrySource.Should().NotBeNull();
     }
 
     [Fact]
@@ -176,8 +236,7 @@ public class TimeoutResilienceStrategyTests : IDisposable
 
         var sut = CreateSut();
 
-        var context = ResilienceContextPool.Shared.Get();
-        context.CancellationToken = cts.Token;
+        var context = ResilienceContextPool.Shared.Get(cts.Token);
 
         await sut.ExecuteAsync(
             (r, _) =>

@@ -8,7 +8,7 @@ public class ObjectPoolTests
     public void GetAnd_ReturnObject_SameInstance()
     {
         // Arrange
-        var pool = new ObjectPool<object>(() => new object(), _ => { });
+        var pool = new ObjectPool<object>(() => new object(), _ => true);
 
         var obj1 = pool.Get();
         pool.Return(obj1);
@@ -21,10 +21,8 @@ public class ObjectPoolTests
     }
 
     [Fact]
-    public void MaxCapacity_Ok()
-    {
+    public void MaxCapacity_Ok() =>
         ObjectPool<object>.MaxCapacity.Should().Be((Environment.ProcessorCount * 2) - 1);
-    }
 
     [Fact]
     public void MaxCapacity_Respected()
@@ -52,7 +50,7 @@ public class ObjectPoolTests
         var items2 = GetStoreReturn(pool, count);
 
         // Assert
-        items1.Last().Should().NotBeSameAs(items2.Last());
+        items1[items1.Count - 1].Should().NotBeSameAs(items2[items2.Count - 1]);
     }
 
     [Fact]

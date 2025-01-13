@@ -6,6 +6,33 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
     #region Configuration
 
     [Fact]
+    public void Should_throw_when_action_is_null()
+    {
+        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        Func<Context, CancellationToken, Task<EmptyStruct>> action = null!;
+        Func<Context, TimeSpan> timeoutProvider = (_) => TimeSpan.Zero;
+        TimeoutStrategy timeoutStrategy = TimeoutStrategy.Optimistic;
+        Func<Context, TimeSpan, Task, Exception, Task> onTimeoutAsync = (_, _, _, _) => Task.CompletedTask;
+
+        var instance = Activator.CreateInstance(
+            typeof(AsyncTimeoutPolicy<EmptyStruct>),
+            flags,
+            null,
+            [timeoutProvider, timeoutStrategy, onTimeoutAsync],
+            null)!;
+        var instanceType = instance.GetType();
+        var methods = instanceType.GetMethods(flags);
+        var methodInfo = methods.First(method => method is { Name: "ImplementationAsync", ReturnType.Name: "Task`1" });
+
+        var func = () => methodInfo.Invoke(instance, [action, new Context(), CancellationToken, false]);
+
+        var exceptionAssertions = func.Should().Throw<TargetInvocationException>();
+        exceptionAssertions.And.Message.Should().Be("Exception has been thrown by the target of an invocation.");
+        exceptionAssertions.And.InnerException.Should().BeOfType<ArgumentNullException>()
+            .Which.ParamName.Should().Be("action");
+    }
+
+    [Fact]
     public void Should_throw_when_timeout_is_zero_by_timespan()
     {
         Action policy = () => Policy.TimeoutAsync<ResultPrimitive>(TimeSpan.Zero);
@@ -197,7 +224,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
         {
-            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
             return ResultPrimitive.WhateverButTooLate;
         })).Should().ThrowAsync<TimeoutRejectedException>();
     }
@@ -228,7 +255,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         watch.Start();
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
         {
-            await SystemClock.SleepAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+            await SystemClock.SleepAsync(TimeSpan.FromSeconds(10), CancellationToken);
             return ResultPrimitive.WhateverButTooLate;
         }))
             .Should().ThrowAsync<TimeoutRejectedException>();
@@ -242,7 +269,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
     {
         var policy = Policy.TimeoutAsync<ResultPrimitive>(TimeSpan.FromSeconds(10), TimeoutStrategy.Pessimistic);
 
-        await policy.Awaiting(p => p.ExecuteAsync(() => throw new NotImplementedException())).Should().ThrowAsync<NotImplementedException>();
+        await policy.Awaiting(p => p.ExecuteAsync(() => throw new NotSupportedException())).Should().ThrowAsync<NotSupportedException>();
     }
 
     #endregion
@@ -253,7 +280,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
     public async Task Should_throw_when_timeout_is_less_than_execution_duration__optimistic()
     {
         var policy = Policy.TimeoutAsync<ResultPrimitive>(TimeSpan.FromMilliseconds(50), TimeoutStrategy.Optimistic);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         await policy.Awaiting(p => p.ExecuteAsync(async ct =>
         {
@@ -268,7 +295,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         var policy = Policy.TimeoutAsync<ResultPrimitive>(TimeSpan.FromSeconds(1), TimeoutStrategy.Optimistic);
 
         ResultPrimitive result = ResultPrimitive.Undefined;
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         Func<Task> act = async () => result = await policy.ExecuteAsync(_ => Task.FromResult(ResultPrimitive.Good), userCancellationToken);
 
@@ -283,7 +310,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         TimeSpan timeout = TimeSpan.FromSeconds(1);
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeout, TimeoutStrategy.Optimistic);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         TimeSpan tolerance = TimeSpan.FromSeconds(3); // Consider increasing tolerance, if test fails transiently in different test/build environments.
 
@@ -304,7 +331,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
     {
         var policy = Policy.TimeoutAsync<ResultPrimitive>(TimeSpan.FromSeconds(10), TimeoutStrategy.Optimistic);
 
-        await policy.Awaiting(p => p.ExecuteAsync(() => throw new NotImplementedException())).Should().ThrowAsync<NotImplementedException>();
+        await policy.Awaiting(p => p.ExecuteAsync(() => throw new NotSupportedException())).Should().ThrowAsync<NotSupportedException>();
     }
 
     #endregion
@@ -323,7 +350,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         {
             userTokenSource.Cancel(); // User token cancels in the middle of execution ...
             await SystemClock.SleepAsync(TimeSpan.FromSeconds(timeout * 2),
-                CancellationToken.None); // ... but if the executed delegate does not observe it
+                CancellationToken); // ... but if the executed delegate does not observe it
             return ResultPrimitive.WhateverButTooLate;
         }, userTokenSource.Token)).Should().ThrowAsync<TimeoutRejectedException>(); // ... it's still the timeout we expect.
     }
@@ -335,7 +362,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         bool executed = false;
 
-        using (CancellationTokenSource cts = new CancellationTokenSource())
+        using (var cts = new CancellationTokenSource())
         {
             cts.Cancel();
 
@@ -378,7 +405,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         bool executed = false;
 
-        using (CancellationTokenSource cts = new CancellationTokenSource())
+        using (var cts = new CancellationTokenSource())
         {
             cts.Cancel();
 
@@ -414,7 +441,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
         {
-            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
             return ResultPrimitive.WhateverButTooLate;
         }))
         .Should().ThrowAsync<TimeoutRejectedException>();
@@ -440,7 +467,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async _ =>
             {
-                await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+                await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
                 return ResultPrimitive.WhateverButTooLate;
             }, contextPassedToExecute))
             .Should().ThrowAsync<TimeoutRejectedException>();
@@ -469,7 +496,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
             {
-                await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+                await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
                 return ResultPrimitive.WhateverButTooLate;
             }))
             .Should().ThrowAsync<TimeoutRejectedException>();
@@ -499,7 +526,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async _ =>
         {
-            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
             return ResultPrimitive.WhateverButTooLate;
         }, context))
         .Should().ThrowAsync<TimeoutRejectedException>();
@@ -522,7 +549,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
         {
-            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+            await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
             return ResultPrimitive.WhateverButTooLate;
         }))
         .Should().ThrowAsync<TimeoutRejectedException>();
@@ -553,12 +580,12 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
         {
-            await SystemClock.SleepAsync(thriceShimTimeSpan, CancellationToken.None);
+            await SystemClock.SleepAsync(thriceShimTimeSpan, CancellationToken);
             throw exceptionToThrow;
         }))
         .Should().ThrowAsync<TimeoutRejectedException>();
 
-        await SystemClock.SleepAsync(thriceShimTimeSpan, CancellationToken.None);
+        await SystemClock.SleepAsync(thriceShimTimeSpan, CancellationToken);
         exceptionObservedFromTaskPassedToOnTimeout.Should().NotBeNull();
         exceptionObservedFromTaskPassedToOnTimeout.Should().Be(exceptionToThrow);
 
@@ -580,13 +607,13 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         await policy.Awaiting(p => p.ExecuteAsync(async () =>
             {
-                await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+                await SystemClock.SleepAsync(TimeSpan.FromSeconds(3), CancellationToken);
                 return ResultPrimitive.WhateverButTooLate;
             }))
             .Should().ThrowAsync<TimeoutRejectedException>();
 
         exceptionPassedToOnTimeout.Should().NotBeNull();
-        exceptionPassedToOnTimeout.Should().BeOfType(typeof(OperationCanceledException));
+        exceptionPassedToOnTimeout.Should().BeOfType<OperationCanceledException>();
     }
 
     #endregion
@@ -606,7 +633,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         };
 
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeoutPassedToConfiguration, TimeoutStrategy.Optimistic, onTimeoutAsync);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         await policy.Awaiting(p => p.ExecuteAsync(async ct =>
         {
@@ -633,7 +660,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         TimeSpan timeout = TimeSpan.FromMilliseconds(250);
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeout, TimeoutStrategy.Optimistic, onTimeoutAsync);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         await policy.Awaiting(p => p.ExecuteAsync(async (_, ct) =>
             {
@@ -663,7 +690,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         };
 
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeoutFunc, TimeoutStrategy.Optimistic, onTimeoutAsync);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         await policy.Awaiting(p => p.ExecuteAsync(async ct =>
             {
@@ -691,7 +718,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         };
 
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeoutProvider, TimeoutStrategy.Optimistic, onTimeoutAsync);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         // Supply a programatically-controlled timeout, via the execution context.
         Context context = new Context("SomeOperationKey")
@@ -721,7 +748,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
 
         TimeSpan timeout = TimeSpan.FromMilliseconds(250);
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeout, TimeoutStrategy.Optimistic, onTimeoutAsync);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         await policy.Awaiting(p => p.ExecuteAsync(async ct =>
         {
@@ -746,7 +773,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
         };
 
         var policy = Policy.TimeoutAsync<ResultPrimitive>(timeoutPassedToConfiguration, TimeoutStrategy.Optimistic, onTimeoutAsync);
-        var userCancellationToken = CancellationToken.None;
+        var userCancellationToken = CancellationToken;
 
         await policy.Awaiting(p => p.ExecuteAsync(async ct =>
             {
@@ -756,7 +783,7 @@ public class TimeoutTResultAsyncSpecs : TimeoutSpecsBase
             .Should().ThrowAsync<TimeoutRejectedException>();
 
         exceptionPassedToOnTimeout.Should().NotBeNull();
-        exceptionPassedToOnTimeout.Should().BeOfType(typeof(OperationCanceledException));
+        exceptionPassedToOnTimeout.Should().BeOfType<OperationCanceledException>();
     }
 
     #endregion

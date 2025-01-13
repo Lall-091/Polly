@@ -1,6 +1,6 @@
 ﻿namespace Polly.CircuitBreaker;
 
-internal class ConsecutiveCountCircuitController<TResult> : CircuitStateController<TResult>
+internal sealed class ConsecutiveCountCircuitController<TResult> : CircuitStateController<TResult>
 {
     private readonly int _exceptionsAllowedBeforeBreaking;
     private int _consecutiveFailureCount;
@@ -10,22 +10,22 @@ internal class ConsecutiveCountCircuitController<TResult> : CircuitStateControll
         TimeSpan durationOfBreak,
         Action<DelegateResult<TResult>, CircuitState, TimeSpan, Context> onBreak,
         Action<Context> onReset,
-        Action onHalfOpen
-        ) : base(durationOfBreak, onBreak, onReset, onHalfOpen) =>
+        Action onHalfOpen)
+        : base(durationOfBreak, onBreak, onReset, onHalfOpen) =>
         _exceptionsAllowedBeforeBreaking = exceptionsAllowedBeforeBreaking;
 
     public override void OnCircuitReset(Context context)
     {
-        using var _ = TimedLock.Lock(_lock);
+        using var _ = TimedLock.Lock(Lock);
         _consecutiveFailureCount = 0;
         ResetInternal_NeedsLock(context);
     }
 
     public override void OnActionSuccess(Context context)
     {
-        using var _ = TimedLock.Lock(_lock);
+        using var _ = TimedLock.Lock(Lock);
 
-        switch (_circuitState)
+        switch (InternalCircuitState)
         {
             case CircuitState.HalfOpen:
                 OnCircuitReset(context);
@@ -46,11 +46,11 @@ internal class ConsecutiveCountCircuitController<TResult> : CircuitStateControll
 
     public override void OnActionFailure(DelegateResult<TResult> outcome, Context context)
     {
-        using var _ = TimedLock.Lock(_lock);
+        using var _ = TimedLock.Lock(Lock);
 
-        _lastOutcome = outcome;
+        LastOutcome = outcome;
 
-        switch (_circuitState)
+        switch (InternalCircuitState)
         {
             case CircuitState.HalfOpen:
                 Break_NeedsLock(context);
@@ -62,6 +62,7 @@ internal class ConsecutiveCountCircuitController<TResult> : CircuitStateControll
                 {
                     Break_NeedsLock(context);
                 }
+
                 break;
 
             case CircuitState.Open:

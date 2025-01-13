@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net7.0;net6.0</TargetFrameworks>
+    <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(TargetFrameworks);net481</TargetFrameworks>
     <ProjectType>Test</ProjectType>
     <Nullable>enable</Nullable>
     <Threshold>100</Threshold>
-    <NoWarn>$(NoWarn);SA1600;SA1204;S6608</NoWarn>
+    <NoWarn>$(NoWarn);SA1600;SA1204</NoWarn>
     <Include>[Polly.Extensions]*</Include>
   </PropertyGroup>
 

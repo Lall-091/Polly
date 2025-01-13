@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace Polly.Registry;
 
 /// <summary>
@@ -31,9 +29,9 @@ public class ConfigureBuilderContext<TKey>
     /// </summary>
     internal string? BuilderInstanceName { get; }
 
-    internal List<CancellationToken> ReloadTokens { get; } = new();
+    internal List<CancellationToken> ReloadTokens { get; } = [];
 
-    internal List<Action> DisposeCallbacks { get; } = new();
+    internal List<Action> DisposeCallbacks { get; } = [];
 
     /// <summary>
     /// Reloads the pipeline when <paramref name="cancellationToken"/> is canceled.
@@ -42,7 +40,6 @@ public class ConfigureBuilderContext<TKey>
     /// <remarks>
     /// You can add multiple reload tokens to the context. Non-cancelable or already canceled tokens are ignored.
     /// </remarks>
-    [EditorBrowsable(EditorBrowsableState.Never)]
     public void AddReloadToken(CancellationToken cancellationToken)
     {
         if (!cancellationToken.CanBeCanceled || cancellationToken.IsCancellationRequested)

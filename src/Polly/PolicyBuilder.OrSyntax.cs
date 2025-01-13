@@ -9,7 +9,8 @@ public partial class PolicyBuilder
     /// </summary>
     /// <typeparam name="TException">The type of the exception to handle.</typeparam>
     /// <returns>The PolicyBuilder instance.</returns>
-    public PolicyBuilder Or<TException>() where TException : Exception
+    public PolicyBuilder Or<TException>()
+        where TException : Exception
     {
         ExceptionPredicates.Add(exception => exception is TException ? exception : null);
         return this;
@@ -21,7 +22,8 @@ public partial class PolicyBuilder
     /// <typeparam name="TException">The type of the exception.</typeparam>
     /// <param name="exceptionPredicate">The exception predicate to filter the type of exception this policy can handle.</param>
     /// <returns>The PolicyBuilder instance.</returns>
-    public PolicyBuilder Or<TException>(Func<TException, bool> exceptionPredicate) where TException : Exception
+    public PolicyBuilder Or<TException>(Func<TException, bool> exceptionPredicate)
+        where TException : Exception
     {
         ExceptionPredicates.Add(exception => exception is TException texception && exceptionPredicate(texception) ? exception : null);
         return this;
@@ -32,7 +34,8 @@ public partial class PolicyBuilder
     /// </summary>
     /// <typeparam name="TException">The type of the exception to handle.</typeparam>
     /// <returns>The PolicyBuilder instance, for fluent chaining.</returns>
-    public PolicyBuilder OrInner<TException>() where TException : Exception
+    public PolicyBuilder OrInner<TException>()
+        where TException : Exception
     {
         ExceptionPredicates.Add(HandleInner(ex => ex is TException));
         return this;
@@ -44,7 +47,8 @@ public partial class PolicyBuilder
     /// <typeparam name="TException">The type of the exception to handle.</typeparam>
     /// <param name="exceptionPredicate">The exception predicate to filter the type of exception this policy can handle.</param>
     /// <returns>The PolicyBuilder instance, for fluent chaining.</returns>
-    public PolicyBuilder OrInner<TException>(Func<TException, bool> exceptionPredicate) where TException : Exception
+    public PolicyBuilder OrInner<TException>(Func<TException, bool> exceptionPredicate)
+        where TException : Exception
     {
         ExceptionPredicates.Add(HandleInner(exception => exception is TException innerEx && exceptionPredicate(innerEx)));
         return this;
@@ -60,7 +64,9 @@ public partial class PolicyBuilder
                 {
                     var matchedInAggregate = HandleInnerNested(predicate, innerException);
                     if (matchedInAggregate != null)
+                    {
                         return matchedInAggregate;
+                    }
                 }
             }
 
@@ -69,8 +75,16 @@ public partial class PolicyBuilder
 
     private static Exception HandleInnerNested(Func<Exception, bool> predicate, Exception current)
     {
-        if (current == null) return null;
-        if (predicate(current)) return current;
+        if (current == null)
+        {
+            return null;
+        }
+
+        if (predicate(current))
+        {
+            return current;
+        }
+
         return HandleInnerNested(predicate, current.InnerException);
     }
 
@@ -95,7 +109,7 @@ public partial class PolicyBuilder
     /// <remarks>This policy filter matches the <paramref name="result"/> value returned using .Equals(), ideally suited for value types such as int and enum.  To match characteristics of class return types, consider the overload taking a result predicate.</remarks>
     /// <returns>The PolicyBuilder instance.</returns>
     public PolicyBuilder<TResult> OrResult<TResult>(TResult result) =>
-        OrResult<TResult>(r => (r != null && r.Equals(result)) || (r == null && result == null));
+        OrResult<TResult>(r => (!Equals(r, default(TResult)) && r.Equals(result)) || (Equals(r, default(TResult)) && Equals(result, default(TResult))));
 
     #endregion
 }
@@ -123,7 +137,7 @@ public partial class PolicyBuilder<TResult>
     /// <remarks>This policy filter matches the <paramref name="result"/> value returned using .Equals(), ideally suited for value types such as int and enum.  To match characteristics of class return types, consider the overload taking a result predicate.</remarks>
     /// <returns>The PolicyBuilder instance.</returns>
     public PolicyBuilder<TResult> OrResult(TResult result) =>
-        OrResult(r => (r != null && r.Equals(result)) || (r == null && result == null));
+        OrResult(r => (!Equals(r, default(TResult)) && r.Equals(result)) || (Equals(r, default(TResult)) && Equals(result, default(TResult))));
 
     #endregion
 
@@ -134,7 +148,8 @@ public partial class PolicyBuilder<TResult>
     /// </summary>
     /// <typeparam name="TException">The type of the exception to handle.</typeparam>
     /// <returns>The PolicyBuilder instance.</returns>
-    public PolicyBuilder<TResult> Or<TException>() where TException : Exception
+    public PolicyBuilder<TResult> Or<TException>()
+        where TException : Exception
     {
         ExceptionPredicates.Add(exception => exception is TException ? exception : null);
         return this;
@@ -146,9 +161,10 @@ public partial class PolicyBuilder<TResult>
     /// <typeparam name="TException">The type of the exception.</typeparam>
     /// <param name="exceptionPredicate">The exception predicate to filter the type of exception this policy can handle.</param>
     /// <returns>The PolicyBuilder instance.</returns>
-    public PolicyBuilder<TResult> Or<TException>(Func<TException, bool> exceptionPredicate) where TException : Exception
+    public PolicyBuilder<TResult> Or<TException>(Func<TException, bool> exceptionPredicate)
+        where TException : Exception
     {
-        ExceptionPredicates.Add(exception => exception is TException texception &&                                                  exceptionPredicate(texception) ? exception : null);
+        ExceptionPredicates.Add(exception => exception is TException texception && exceptionPredicate(texception) ? exception : null);
         return this;
     }
 
@@ -157,7 +173,8 @@ public partial class PolicyBuilder<TResult>
     /// </summary>
     /// <typeparam name="TException">The type of the exception to handle.</typeparam>
     /// <returns>The PolicyBuilder instance, for fluent chaining.</returns>
-    public PolicyBuilder<TResult> OrInner<TException>() where TException : Exception
+    public PolicyBuilder<TResult> OrInner<TException>()
+        where TException : Exception
     {
         ExceptionPredicates.Add(PolicyBuilder.HandleInner(ex => ex is TException));
         return this;
@@ -169,7 +186,8 @@ public partial class PolicyBuilder<TResult>
     /// <typeparam name="TException">The type of the exception to handle.</typeparam>
     /// <param name="exceptionPredicate">The exception predicate to filter the type of exception this policy can handle.</param>
     /// <returns>The PolicyBuilder instance, for fluent chaining.</returns>
-    public PolicyBuilder<TResult> OrInner<TException>(Func<TException, bool> exceptionPredicate) where TException : Exception
+    public PolicyBuilder<TResult> OrInner<TException>(Func<TException, bool> exceptionPredicate)
+        where TException : Exception
     {
         ExceptionPredicates.Add(PolicyBuilder.HandleInner(ex => ex is TException texception && exceptionPredicate(texception)));
         return this;

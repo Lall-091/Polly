@@ -9,6 +9,7 @@ namespace Polly.RateLimiting.Tests;
 
 public class RateLimiterResiliencePipelineBuilderExtensionsTests
 {
+#pragma warning disable IDE0028
     public static readonly TheoryData<Action<ResiliencePipelineBuilder>> Data = new()
     {
         builder =>
@@ -41,9 +42,12 @@ public class RateLimiterResiliencePipelineBuilderExtensionsTests
             AssertRateLimiterStrategy(builder, strategy => strategy.Wrapper.Should().BeNull());
         }
     };
+#pragma warning restore IDE0028
 
-    [MemberData(nameof(Data))]
     [Theory(Skip = "https://github.com/stryker-mutator/stryker-net/issues/2144")]
+#pragma warning disable xUnit1045
+    [MemberData(nameof(Data))]
+#pragma warning restore xUnit1045
     public void AddRateLimiter_Extensions_Ok(Action<ResiliencePipelineBuilder> configure)
     {
         var builder = new ResiliencePipelineBuilder();
@@ -54,8 +58,7 @@ public class RateLimiterResiliencePipelineBuilderExtensionsTests
     }
 
     [Fact]
-    public void AddConcurrencyLimiter_InvalidOptions_Throws()
-    {
+    public void AddConcurrencyLimiter_InvalidOptions_Throws() =>
         Assert.Throws<ArgumentException>(() =>
         {
             return new ResiliencePipelineBuilder().AddConcurrencyLimiter(new ConcurrencyLimiterOptions
@@ -65,12 +68,11 @@ public class RateLimiterResiliencePipelineBuilderExtensionsTests
             })
             .Build();
         });
-    }
 
     [Fact]
     public void AddRateLimiter_AllExtensions_Ok()
     {
-        foreach (var configure in Data.Select(v => v[0]).Cast<Action<ResiliencePipelineBuilder>>())
+        foreach (Action<ResiliencePipelineBuilder> configure in Data)
         {
             var builder = new ResiliencePipelineBuilder();
 
@@ -103,8 +105,7 @@ public class RateLimiterResiliencePipelineBuilderExtensionsTests
     }
 
     [Fact]
-    public void AddRateLimiter_InvalidOptions_Throws()
-    {
+    public void AddRateLimiter_InvalidOptions_Throws() =>
         new ResiliencePipelineBuilder().Invoking(b => b.AddRateLimiter(new RateLimiterStrategyOptions { DefaultRateLimiterOptions = null! }))
             .Should()
             .Throw<ValidationException>()
@@ -114,11 +115,9 @@ public class RateLimiterResiliencePipelineBuilderExtensionsTests
             Validation Errors:
             The DefaultRateLimiterOptions field is required.
             """);
-    }
 
     [Fact]
-    public void AddGenericRateLimiter_InvalidOptions_Throws()
-    {
+    public void AddGenericRateLimiter_InvalidOptions_Throws() =>
         new ResiliencePipelineBuilder<int>().Invoking(b => b.AddRateLimiter(new RateLimiterStrategyOptions { DefaultRateLimiterOptions = null! }))
             .Should()
             .Throw<ValidationException>()
@@ -128,7 +127,6 @@ public class RateLimiterResiliencePipelineBuilderExtensionsTests
             Validation Errors:
             The DefaultRateLimiterOptions field is required.
             """);
-    }
 
     [Fact]
     public void AddRateLimiter_Options_Ok()

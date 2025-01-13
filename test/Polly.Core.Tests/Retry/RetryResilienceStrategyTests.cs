@@ -2,6 +2,7 @@ using FluentAssertions.Execution;
 using Microsoft.Extensions.Time.Testing;
 using Polly.Retry;
 using Polly.Telemetry;
+using Polly.Testing;
 
 namespace Polly.Core.Tests.Retry;
 
@@ -9,7 +10,7 @@ public class RetryResilienceStrategyTests
 {
     private readonly RetryStrategyOptions _options = new();
     private readonly FakeTimeProvider _timeProvider = new();
-    private readonly List<TelemetryEventArguments<object, object>> _args = new();
+    private readonly List<TelemetryEventArguments<object, object>> _args = [];
     private ResilienceStrategyTelemetry _telemetry;
 
     public RetryResilienceStrategyTests()
@@ -34,10 +35,9 @@ public class RetryResilienceStrategyTests
     {
         SetupNoDelay();
         var sut = CreateSut();
-        using var cancellationToken = new CancellationTokenSource();
-        cancellationToken.Cancel();
-        var context = ResilienceContextPool.Shared.Get();
-        context.CancellationToken = cancellationToken.Token;
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var context = ResilienceContextPool.Shared.Get(cts.Token);
         var executed = false;
 
         var result = await sut.ExecuteOutcomeAsync((_, _) => { executed = true; return Outcome.FromResultAsValueTask("dummy"); }, context, "state");
@@ -48,18 +48,17 @@ public class RetryResilienceStrategyTests
     [Fact]
     public async Task ExecuteAsync_CancellationRequestedAfterCallback_EnsureNotRetried()
     {
-        using var cancellationToken = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
 
         _options.ShouldHandle = _ => PredicateResult.True();
         _options.OnRetry = _ =>
         {
-            cancellationToken.Cancel();
+            cts.Cancel();
             return default;
         };
 
         var sut = CreateSut(TimeProvider.System);
-        var context = ResilienceContextPool.Shared.Get();
-        context.CancellationToken = cancellationToken.Token;
+        var context = ResilienceContextPool.Shared.Get(cts.Token);
         var executed = false;
 
         var result = await sut.ExecuteOutcomeAsync((_, _) => { executed = true; return Outcome.FromResultAsValueTask("dummy"); }, context, "state");
@@ -88,9 +87,9 @@ public class RetryResilienceStrategyTests
         // assert
         result.IsDisposed.Should().BeFalse();
         results.Count.Should().Be(_options.MaxRetryAttempts + 1);
-        results.Last().IsDisposed.Should().BeFalse();
+        results[results.Count - 1].IsDisposed.Should().BeFalse();
 
-        results.Remove(results.Last());
+        results.Remove(results[results.Count - 1]);
         results.Should().AllSatisfy(r => r.IsDisposed.Should().BeTrue());
     }
 
@@ -153,7 +152,7 @@ public class RetryResilienceStrategyTests
             return new ValueTask<TimeSpan?>(delay);
         };
 
-        CreateSut(TimeProvider.System).Execute<string>(_ => "dummy");
+        CreateSut(TimeProvider.System).Execute(_ => "dummy");
 
         retries.Should().Be(3);
         generatedValues.Should().Be(3);
@@ -190,6 +189,15 @@ public class RetryResilienceStrategyTests
         generatedValues.Should().Be(3);
     }
 
+    [Fact]
+    public void IsLastAttempt_Ok()
+    {
+        var sut = (RetryResilienceStrategy<object>)CreateSut().GetPipelineDescriptor().FirstStrategy.StrategyInstance;
+
+        sut.IsLastAttempt(int.MaxValue, out var increment).Should().BeFalse();
+        increment.Should().BeFalse();
+    }
+
     private sealed class ThrowingFakeTimeProvider : FakeTimeProvider
     {
         public override DateTimeOffset GetUtcNow() => throw new AssertionFailedException("TimeProvider should not be used.");
@@ -199,7 +207,7 @@ public class RetryResilienceStrategyTests
     }
 
     [Fact]
-    public async void OnRetry_EnsureCorrectArguments()
+    public async Task OnRetry_EnsureCorrectArguments()
     {
         var attempts = new List<int>();
         var delays = new List<TimeSpan>();
@@ -234,6 +242,30 @@ public class RetryResilienceStrategyTests
     }
 
     [Fact]
+    public async Task MaxDelay_EnsureRespected()
+    {
+        var delays = new List<TimeSpan>();
+        _options.OnRetry = args =>
+        {
+            delays.Add(args.RetryDelay);
+            return default;
+        };
+
+        _options.ShouldHandle = args => PredicateResult.True();
+        _options.MaxRetryAttempts = 3;
+        _options.BackoffType = DelayBackoffType.Linear;
+        _options.MaxDelay = TimeSpan.FromMilliseconds(123);
+
+        var sut = CreateSut();
+
+        await ExecuteAndAdvance(sut);
+
+        delays[0].Should().Be(TimeSpan.FromMilliseconds(123));
+        delays[1].Should().Be(TimeSpan.FromMilliseconds(123));
+        delays[2].Should().Be(TimeSpan.FromMilliseconds(123));
+    }
+
+    [Fact]
     public async Task OnRetry_EnsureExecutionTime()
     {
         _options.OnRetry = args =>
@@ -258,16 +290,96 @@ public class RetryResilienceStrategyTests
     }
 
     [Fact]
-    public void Execute_EnsureAttemptReported()
+    public void Execute_NotHandledOriginalAttempt_EnsureAttemptReported()
     {
         var called = false;
         _telemetry = TestUtilities.CreateResilienceTelemetry(args =>
         {
             var attempt = args.Arguments.Should().BeOfType<ExecutionAttemptArguments>().Subject;
-
+            args.Event.Severity.Should().Be(ResilienceEventSeverity.Information);
             attempt.Handled.Should().BeFalse();
             attempt.AttemptNumber.Should().Be(0);
             attempt.Duration.Should().Be(TimeSpan.FromSeconds(1));
+            called = true;
+        });
+
+        var sut = CreateSut();
+
+        sut.Execute(() =>
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            return 0;
+        });
+
+        called.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Execute_NotHandledFinalAttempt_EnsureAttemptReported()
+    {
+        _options.MaxRetryAttempts = 1;
+        _options.Delay = TimeSpan.Zero;
+
+        // original attempt is handled, retried attempt is not handled
+        _options.ShouldHandle = args => new ValueTask<bool>(args.AttemptNumber == 0);
+        var called = false;
+        _telemetry = TestUtilities.CreateResilienceTelemetry(args =>
+        {
+            // ignore OnRetry event
+            if (args.Arguments is OnRetryArguments<object>)
+            {
+                return;
+            }
+
+            var attempt = args.Arguments.Should().BeOfType<ExecutionAttemptArguments>().Subject;
+            if (attempt.AttemptNumber == 0)
+            {
+                args.Event.Severity.Should().Be(ResilienceEventSeverity.Warning);
+            }
+            else
+            {
+                args.Event.Severity.Should().Be(ResilienceEventSeverity.Information);
+            }
+
+            called = true;
+        });
+
+        var sut = CreateSut();
+
+        sut.Execute(() =>
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            return 0;
+        });
+
+        called.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Execute_HandledFinalAttempt_EnsureAttemptReported()
+    {
+        _options.MaxRetryAttempts = 1;
+        _options.Delay = TimeSpan.Zero;
+        _options.ShouldHandle = _ => new ValueTask<bool>(true);
+        var called = false;
+        _telemetry = TestUtilities.CreateResilienceTelemetry(args =>
+        {
+            // ignore OnRetry event
+            if (args.Arguments is OnRetryArguments<object>)
+            {
+                return;
+            }
+
+            var attempt = args.Arguments.Should().BeOfType<ExecutionAttemptArguments>().Subject;
+            if (attempt.AttemptNumber == 0)
+            {
+                args.Event.Severity.Should().Be(ResilienceEventSeverity.Warning);
+            }
+            else
+            {
+                args.Event.Severity.Should().Be(ResilienceEventSeverity.Error);
+            }
+
             called = true;
         });
 

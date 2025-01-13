@@ -16,7 +16,19 @@ public class ResiliencePipelineBuilderTests
         var builder = new ResiliencePipelineBuilder();
 
         builder.Name.Should().BeNull();
-        builder.TimeProvider.Should().Be(TimeProvider.System);
+        builder.TimeProvider.Should().BeNull();
+    }
+
+    [Fact]
+    public void TimeProviderInternal_Ok()
+    {
+        var builder = new ResiliencePipelineBuilder();
+        builder.TimeProviderInternal.Should().Be(TimeProvider.System);
+
+        var timeProvider = Substitute.For<TimeProvider>();
+        builder.TimeProvider = timeProvider;
+
+        builder.TimeProvider.Should().Be(timeProvider);
     }
 
     [Fact]
@@ -100,6 +112,36 @@ public class ResiliencePipelineBuilderTests
 
         executions.Should().BeInAscendingOrder();
         executions.Should().HaveCount(7);
+    }
+
+    [Fact]
+    public void AddStrategy_ExplicitProactiveInstance_Ok()
+    {
+        var builder = new ResiliencePipelineBuilder();
+        var strategy = new TestResilienceStrategy();
+
+        builder.AddStrategy(_ => strategy);
+
+        builder
+            .Build()
+            .GetPipelineDescriptor()
+            .FirstStrategy.StrategyInstance.Should()
+            .BeSameAs(strategy);
+    }
+
+    [Fact]
+    public void AddStrategy_ExplicitReactiveInstance_Ok()
+    {
+        var builder = new ResiliencePipelineBuilder();
+        var strategy = Substitute.For<ResilienceStrategy<object>>();
+
+        builder.AddStrategy(_ => strategy);
+
+        builder
+            .Build()
+            .GetPipelineDescriptor()
+            .FirstStrategy.StrategyInstance.Should()
+            .BeSameAs(strategy);
     }
 
     [Fact]
@@ -326,27 +368,27 @@ The RequiredProperty field is required.
             context =>
             {
                 context.Telemetry.TelemetrySource.PipelineName.Should().Be("builder-name");
-                context.Telemetry.TelemetrySource.StrategyName.Should().Be("strategy-name");
+                context.Telemetry.TelemetrySource.StrategyName.Should().Be("strategy_name");
                 context.Telemetry.Should().NotBeNull();
                 context.TimeProvider.Should().Be(builder.TimeProvider);
                 verified1 = true;
 
                 return new TestResilienceStrategy();
             },
-            new TestResilienceStrategyOptions { Name = "strategy-name" });
+            new TestResilienceStrategyOptions { Name = "strategy_name" });
 
         builder.AddStrategy(
             context =>
             {
                 context.Telemetry.TelemetrySource.PipelineName.Should().Be("builder-name");
-                context.Telemetry.TelemetrySource.StrategyName.Should().Be("strategy-name-2");
+                context.Telemetry.TelemetrySource.StrategyName.Should().Be("strategy_name-2");
                 context.Telemetry.Should().NotBeNull();
                 context.TimeProvider.Should().Be(builder.TimeProvider);
                 verified2 = true;
 
                 return new TestResilienceStrategy();
             },
-            new TestResilienceStrategyOptions { Name = "strategy-name-2" });
+            new TestResilienceStrategyOptions { Name = "strategy_name-2" });
 
         // act
         builder.Build();

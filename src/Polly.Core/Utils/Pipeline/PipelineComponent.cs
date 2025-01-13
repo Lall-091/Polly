@@ -21,21 +21,15 @@ internal abstract class PipelineComponent : IAsyncDisposable
         Func<ResilienceContext, TState, Outcome<TResult>> callback,
         ResilienceContext context,
         TState state)
-    {
-        return ExecuteCore(
-            static (context, state) =>
-            {
-                var result = state.callback(context, state.state);
-
-                return new ValueTask<Outcome<TResult>>(result);
-            },
+        => ExecuteCore(
+            static (context, state) => new ValueTask<Outcome<TResult>>(state.callbackMethod(context, state.stateObject)),
             context,
-            (callback, state)).GetResult();
-    }
+            (callbackMethod: callback, stateObject: state))
+        .GetResult();
 
     public abstract ValueTask DisposeAsync();
 
-    private class NullComponent : PipelineComponent
+    private sealed class NullComponent : PipelineComponent
     {
         internal override ValueTask<Outcome<TResult>> ExecuteCore<TResult, TState>(Func<ResilienceContext, TState, ValueTask<Outcome<TResult>>> callback, ResilienceContext context, TState state)
             => callback(context, state);

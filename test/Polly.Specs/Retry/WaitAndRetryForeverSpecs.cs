@@ -66,7 +66,7 @@ public class WaitAndRetryForeverSpecs : IDisposable
     {
         var policy = Policy
             .Handle<DivideByZeroException>()
-            .WaitAndRetryForever(_ => new TimeSpan());
+            .WaitAndRetryForever(_ => default);
 
         policy.Invoking(x => x.RaiseException<DivideByZeroException>(3))
               .Should().NotThrow();
@@ -78,7 +78,7 @@ public class WaitAndRetryForeverSpecs : IDisposable
         var policy = Policy
             .Handle<DivideByZeroException>()
             .Or<ArgumentException>()
-            .WaitAndRetryForever(_ => new TimeSpan());
+            .WaitAndRetryForever(_ => default);
 
         policy.Invoking(x => x.RaiseException<ArgumentException>(3))
               .Should().NotThrow();
@@ -251,12 +251,12 @@ public class WaitAndRetryForeverSpecs : IDisposable
             (_, _, context) => contextValue = context["key"].ToString());
 
         policy.RaiseException<DivideByZeroException>(
-            new { key = "original_value" }.AsDictionary());
+            CreateDictionary("key", "original_value"));
 
         contextValue.Should().Be("original_value");
 
         policy.RaiseException<DivideByZeroException>(
-            new { key = "new_value" }.AsDictionary());
+            CreateDictionary("key", "new_value"));
 
         contextValue.Should().Be("new_value");
     }
@@ -309,7 +309,9 @@ public class WaitAndRetryForeverSpecs : IDisposable
             policy.Execute(() =>
             {
                 if (enumerator.MoveNext())
+                {
                     throw enumerator.Current.Key;
+                }
             });
         }
 
@@ -342,7 +344,7 @@ public class WaitAndRetryForeverSpecs : IDisposable
                     throw new DivideByZeroException();
                 }
             },
-            new { RetryAfter = defaultRetryAfter }.AsDictionary()); // Can also set an initial value for RetryAfter, in the Context passed into the call.
+            CreateDictionary("RetryAfter", defaultRetryAfter)); // Can also set an initial value for RetryAfter, in the Context passed into the call.
 
         actualRetryDuration.Should().Be(expectedRetryDuration);
     }

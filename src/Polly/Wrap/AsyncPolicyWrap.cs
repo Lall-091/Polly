@@ -9,12 +9,12 @@ public partial class AsyncPolicyWrap : AsyncPolicy, IPolicyWrap
     private readonly IAsyncPolicy _inner;
 
     /// <summary>
-    /// Returns the outer <see cref="IsPolicy"/> in this <see cref="IPolicyWrap"/>
+    /// Gets the outer <see cref="IsPolicy"/> in this <see cref="IPolicyWrap"/>.
     /// </summary>
     public IsPolicy Outer => _outer;
 
     /// <summary>
-    /// Returns the next inner <see cref="IsPolicy"/> in this <see cref="IPolicyWrap"/>
+    /// Gets the next inner <see cref="IsPolicy"/> in this <see cref="IPolicyWrap"/>.
     /// </summary>
     public IsPolicy Inner => _inner;
 
@@ -35,11 +35,10 @@ public partial class AsyncPolicyWrap : AsyncPolicy, IPolicyWrap
         AsyncPolicyWrapEngine.ImplementationAsync(
             action,
             context,
-            cancellationToken,
             continueOnCapturedContext,
             _outer,
-            _inner
-        );
+            _inner,
+            cancellationToken);
 
     /// <inheritdoc/>
     [DebuggerStepThrough]
@@ -48,11 +47,10 @@ public partial class AsyncPolicyWrap : AsyncPolicy, IPolicyWrap
         AsyncPolicyWrapEngine.ImplementationAsync<TResult>(
             action,
             context,
-            cancellationToken,
             continueOnCapturedContext,
             _outer,
-            _inner
-        );
+            _inner,
+            cancellationToken);
 }
 
 /// <summary>
@@ -68,14 +66,14 @@ public partial class AsyncPolicyWrap<TResult> : AsyncPolicy<TResult>, IPolicyWra
     private readonly IAsyncPolicy<TResult> _innerGeneric;
 
     /// <summary>
-    /// Returns the outer <see cref="IsPolicy"/> in this <see cref="IPolicyWrap{TResult}"/>
+    /// Gets the outer <see cref="IsPolicy"/> in this <see cref="IPolicyWrap{TResult}"/>.
     /// </summary>
-    public IsPolicy Outer => (IsPolicy) _outerGeneric ?? _outerNonGeneric;
+    public IsPolicy Outer => (IsPolicy)_outerGeneric ?? _outerNonGeneric;
 
     /// <summary>
-    /// Returns the next inner <see cref="IsPolicy"/> in this <see cref="IPolicyWrap{TResult}"/>
+    /// Gets the next inner <see cref="IsPolicy"/> in this <see cref="IPolicyWrap{TResult}"/>.
     /// </summary>
-    public IsPolicy Inner => (IsPolicy) _innerGeneric ?? _innerNonGeneric;
+    public IsPolicy Inner => (IsPolicy)_innerGeneric ?? _innerNonGeneric;
 
     internal AsyncPolicyWrap(AsyncPolicy outer, IAsyncPolicy<TResult> inner)
         : base(outer.ExceptionPredicates, ResultPredicates<TResult>.None)
@@ -109,22 +107,20 @@ public partial class AsyncPolicyWrap<TResult> : AsyncPolicy<TResult>, IPolicyWra
                 return AsyncPolicyWrapEngine.ImplementationAsync<TResult>(
                     action,
                     context,
-                    cancellationToken,
                     continueOnCapturedContext,
                     _outerNonGeneric,
-                    _innerNonGeneric
-                );
+                    _innerNonGeneric,
+                    cancellationToken);
             }
             else if (_innerGeneric != null)
             {
                 return AsyncPolicyWrapEngine.ImplementationAsync<TResult>(
                     action,
                     context,
-                    cancellationToken,
                     continueOnCapturedContext,
                     _outerNonGeneric,
-                    _innerGeneric
-                );
+                    _innerGeneric,
+                    cancellationToken);
 
             }
             else
@@ -139,11 +135,10 @@ public partial class AsyncPolicyWrap<TResult> : AsyncPolicy<TResult>, IPolicyWra
                 return AsyncPolicyWrapEngine.ImplementationAsync<TResult>(
                     action,
                     context,
-                    cancellationToken,
                     continueOnCapturedContext,
                     _outerGeneric,
-                    _innerNonGeneric
-                );
+                    _innerNonGeneric,
+                    cancellationToken);
 
             }
             else if (_innerGeneric != null)
@@ -151,11 +146,10 @@ public partial class AsyncPolicyWrap<TResult> : AsyncPolicy<TResult>, IPolicyWra
                 return AsyncPolicyWrapEngine.ImplementationAsync<TResult>(
                     action,
                     context,
-                    cancellationToken,
                     continueOnCapturedContext,
                     _outerGeneric,
-                    _innerGeneric
-                );
+                    _innerGeneric,
+                    cancellationToken);
 
             }
             else

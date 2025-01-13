@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
-using Polly.DependencyInjection;
 using Polly.Registry;
 using Polly.Telemetry;
 
@@ -20,18 +19,23 @@ public class ReloadableResiliencePipelineTests
         var resList = new List<IDisposable>();
         var reloadableConfig = new ReloadableConfiguration();
         reloadableConfig.Reload(new() { { "tag", "initial-tag" } });
-        var builder = new ConfigurationBuilder().Add(reloadableConfig);
         var fakeListener = new FakeTelemetryListener();
+
+        var configuration = new ConfigurationBuilder()
+            .Add(reloadableConfig)
+            .Build();
 
         var services = new ServiceCollection();
 
         if (name == null)
         {
-            services.Configure<ReloadableStrategyOptions>(builder.Build());
+            services.Configure<ReloadableStrategyOptions>(configuration)
+                    .Configure<ReloadableStrategyOptions>(options => options.OptionsName = name);
         }
         else
         {
-            services.Configure<ReloadableStrategyOptions>(name, builder.Build());
+            services.Configure<ReloadableStrategyOptions>(name, configuration)
+                    .Configure<ReloadableStrategyOptions>(name, options => options.OptionsName = name);
         }
 
         services.Configure<TelemetryOptions>(options => options.TelemetryListeners.Add(fakeListener));
@@ -40,6 +44,9 @@ public class ReloadableResiliencePipelineTests
             builder.InstanceName = "my-instance";
 
             var options = context.GetOptions<ReloadableStrategyOptions>(name);
+            options.Should().NotBeNull();
+            options.OptionsName.Should().Be(name);
+
             context.EnableReloads<ReloadableStrategyOptions>(name);
 
             builder.AddStrategy(_ =>
@@ -48,7 +55,7 @@ public class ReloadableResiliencePipelineTests
                 resList.Add(res);
                 return new ReloadableStrategy(options.Tag, res);
             },
-            new ReloadableStrategyOptions());
+            options);
         });
 
         var serviceProvider = services.BuildServiceProvider();
@@ -74,11 +81,11 @@ public class ReloadableResiliencePipelineTests
             resList[i].Received(1).Dispose();
         }
 
-        resList.Last().Received(0).Dispose();
+        resList[resList.Count - 1].Received(0).Dispose();
 
         // check disposal of service provider
         serviceProvider.Dispose();
-        resList.Last().Received(1).Dispose();
+        resList[resList.Count - 1].Received(1).Dispose();
         pipeline.Invoking(p => p.Execute(() => { })).Should().Throw<ObjectDisposedException>();
 
         foreach (var ev in fakeListener.Events)
@@ -115,14 +122,13 @@ public class ReloadableResiliencePipelineTests
     public class ReloadableStrategyOptions : ResilienceStrategyOptions
     {
         public string Tag { get; set; } = string.Empty;
+
+        public string? OptionsName { get; set; }
     }
 
     private class ReloadableConfiguration : ConfigurationProvider, IConfigurationSource
     {
-        public IConfigurationProvider Build(IConfigurationBuilder builder)
-        {
-            return this;
-        }
+        public IConfigurationProvider Build(IConfigurationBuilder builder) => this;
 
         public void Reload(Dictionary<string, string?> data)
         {

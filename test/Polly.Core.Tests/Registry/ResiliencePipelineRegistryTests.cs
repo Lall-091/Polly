@@ -4,6 +4,7 @@ using Polly.Retry;
 using Polly.Testing;
 using Polly.Timeout;
 using Polly.Utils;
+using Polly.Utils.Pipeline;
 
 namespace Polly.Core.Tests.Registry;
 
@@ -26,18 +27,14 @@ public class ResiliencePipelineRegistryTests
     };
 
     [Fact]
-    public void Ctor_Default_Ok()
-    {
+    public void Ctor_Default_Ok() =>
         this.Invoking(_ => new ResiliencePipelineRegistry<string>()).Should().NotThrow();
-    }
 
     [Fact]
-    public void Ctor_InvalidOptions_Throws()
-    {
+    public void Ctor_InvalidOptions_Throws() =>
         this.Invoking(_ => new ResiliencePipelineRegistry<string>(new ResiliencePipelineRegistryOptions<string> { BuilderFactory = null! }))
             .Should()
             .Throw<ArgumentNullException>();
-    }
 
     [Fact]
     public void GetPipeline_BuilderMultiInstance_EnsureMultipleInstances()
@@ -378,6 +375,20 @@ public class ResiliencePipelineRegistryTests
         strategy.GetPipelineDescriptor().FirstStrategy.StrategyInstance.Should().BeOfType<TimeoutResilienceStrategy>();
 
         called.Should().Be(1);
+    }
+
+    [Fact]
+    public void GetOrAddPipeline_EnsureCorrectComponents()
+    {
+        var id = new StrategyId(typeof(string), "A");
+
+        using var registry = CreateRegistry();
+
+        var pipeline = registry.GetOrAddPipeline(id, builder => builder.AddTimeout(TimeSpan.FromSeconds(1)));
+        pipeline.Component.Should().BeOfType<ExecutionTrackingComponent>().Subject.Component.Should().BeOfType<CompositeComponent>();
+
+        var genericPipeline = registry.GetOrAddPipeline<string>(id, builder => builder.AddTimeout(TimeSpan.FromSeconds(1)));
+        pipeline.Component.Should().BeOfType<ExecutionTrackingComponent>().Subject.Component.Should().BeOfType<CompositeComponent>();
     }
 
     [Fact]

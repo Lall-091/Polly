@@ -2,11 +2,18 @@ using Polly.CircuitBreaker;
 
 namespace Polly.Core.Tests.CircuitBreaker;
 
-public class OnCircuitHalfOpenedArgumentsTests
+public static class OnCircuitHalfOpenedArgumentsTests
 {
     [Fact]
-    public void Ctor_Ok()
+    public static void Ctor_Ok()
     {
-        new OnCircuitHalfOpenedArguments(ResilienceContextPool.Shared.Get()).Context.Should().NotBeNull();
+        // Arrange
+        var context = ResilienceContextPool.Shared.Get();
+
+        // Act
+        var target = new OnCircuitHalfOpenedArguments(context);
+
+        // Assert
+        target.Context.Should().Be(context);
     }
 }

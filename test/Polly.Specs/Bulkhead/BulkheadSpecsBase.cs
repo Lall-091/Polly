@@ -1,25 +1,32 @@
 ﻿namespace Polly.Specs.Bulkhead;
 
-[Collection(Helpers.Constants.ParallelThreadDependentTestCollection)]
+[Collection(Constants.ParallelThreadDependentTestCollection)]
 public abstract class BulkheadSpecsBase : IDisposable
 {
+    protected static AssertionFailure? Expect(int expected, Func<int> actualFunc, string measure)
+    {
+        int actual = actualFunc();
+        return actual != expected ? new AssertionFailure(expected, actual, measure) : null;
+    }
+
     #region Time constraints
 
     protected readonly TimeSpan ShimTimeSpan = TimeSpan.FromMilliseconds(50); // How frequently to retry the assertions.
     protected readonly TimeSpan CohesionTimeLimit = TimeSpan.FromMilliseconds(1000); // Consider increasing CohesionTimeLimit if bulkhead specs fail transiently in slower build environments.
 
     #endregion
+
+    protected static CancellationToken CancellationToken => CancellationToken.None;
+
     protected BulkheadSpecsBase(ITestOutputHelper testOutputHelper)
     {
-#if !DEBUG
-        TestOutputHelper = new SilentOutputHelper();
-#else
+#if DEBUG
         TestOutputHelper = new AnnotatedOutputHelper(testOutputHelper);
+#else
+        TestOutputHelper = new SilentOutputHelper();
 #endif
 
-#if !NETCOREAPP1_1
         ThreadPool.SetMinThreads(50, 20);
-#endif
     }
 
     #region Operating variables
@@ -78,7 +85,9 @@ public abstract class BulkheadSpecsBase : IDisposable
     public void Should_control_executions_per_specification(int maxParallelization, int maxQueuingActions, int totalActions, bool cancelQueuing, bool cancelExecuting, string scenario)
     {
         if (totalActions < 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(totalActions));
+        }
 
         MaxParallelization = maxParallelization;
         MaxQueuingActions = maxQueuingActions;
@@ -309,12 +318,6 @@ public abstract class BulkheadSpecsBase : IDisposable
     }
 
     #endregion
-
-    protected static AssertionFailure? Expect(int expected, Func<int> actualFunc, string measure)
-    {
-        int actual = actualFunc();
-        return actual != expected ? new AssertionFailure(expected, actual, measure) : null;
-    }
 
     protected void Within(TimeSpan timeSpan, Func<AssertionFailure?> actionContainingAssertions)
     {

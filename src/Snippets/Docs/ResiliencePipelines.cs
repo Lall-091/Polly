@@ -1,7 +1,7 @@
 ﻿using System.Net.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Polly;
 using Polly.Registry;
+using Polly.Timeout;
 
 namespace Snippets.Docs;
 
@@ -83,9 +83,46 @@ internal static class ResiliencePipelines
 
     #endregion
 
+    public static void ResiliencePipelinesDiagramRetryTimeout()
+    {
+        #region resilience-pipeline-diagram-retry-timeout
+
+        ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
+            .AddRetry(new() { ShouldHandle = new PredicateBuilder().Handle<TimeoutRejectedException>() }) // outer
+            .AddTimeout(TimeSpan.FromSeconds(1)) // inner
+            .Build();
+
+        #endregion
+    }
+
+    public static void ResiliencePipelinesDiagramTimeoutRetry()
+    {
+        #region resilience-pipeline-diagram-timeout-retry
+
+        ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
+            .AddTimeout(TimeSpan.FromSeconds(10)) // outer
+            .AddRetry(new()) // inner
+            .Build();
+
+        #endregion
+    }
+
+    public static void ResiliencePipelinesDiagramTimeoutRetryTimeout()
+    {
+        #region resilience-pipeline-diagram-timeout-retry-timeout
+
+        ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
+            .AddTimeout(TimeSpan.FromSeconds(10)) // outer most
+            .AddRetry(new() { ShouldHandle = new PredicateBuilder().Handle<TimeoutRejectedException>() })
+            .AddTimeout(TimeSpan.FromSeconds(1)) // inner most
+            .Build();
+
+        #endregion
+    }
+
     public static async Task ExecuteOutcomeAsync()
     {
-        var pipeline = Polly.ResiliencePipeline.Empty;
+        var pipeline = ResiliencePipeline.Empty;
 
         #region resilience-pipeline-outcome
 

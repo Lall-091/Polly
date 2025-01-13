@@ -1,6 +1,6 @@
 ﻿namespace Polly.Specs.RateLimit;
 
-[Collection(Polly.Specs.Helpers.Constants.SystemClockDependentTestCollection)]
+[Collection(Constants.SystemClockDependentTestCollection)]
 public abstract class TokenBucketRateLimiterTestsBase : RateLimitSpecsBase, IDisposable
 {
     internal abstract IRateLimiter GetRateLimiter(TimeSpan onePer, long bucketCapacity);
@@ -180,8 +180,8 @@ public abstract class TokenBucketRateLimiterTestsBase : RateLimitSpecsBase, IDis
         var rateLimiter = GetRateLimiter(onePer, 1);
 
         // Arrange - parallel tasks all waiting on a manual reset event.
-        ManualResetEventSlim gate = new ManualResetEventSlim();
-        Task<(bool permitExecution, TimeSpan retryAfter)>[] tasks = new Task<(bool, TimeSpan)>[parallelContention];
+        using var gate = new ManualResetEventSlim();
+        var tasks = new Task<(bool PermitExecution, TimeSpan RetryAfter)>[parallelContention];
         for (int i = 0; i < parallelContention; i++)
         {
             tasks[i] = Task.Run(() =>
@@ -193,13 +193,14 @@ public abstract class TokenBucketRateLimiterTestsBase : RateLimitSpecsBase, IDis
 
         // Act - release gate.
         gate.Set();
-#pragma warning disable S6603
-        RateLimitSpecsBase.Within(TimeSpan.FromSeconds(10 /* high to allow for slow-running on time-slicing CI servers */), () => tasks.All(t => t.IsCompleted).Should().BeTrue());
-#pragma warning restore S6603
+
+        Within(
+            TimeSpan.FromSeconds(10 /* high to allow for slow-running on time-slicing CI servers */),
+            () => Assert.All(tasks, (t) => Assert.True(t.IsCompleted)));
 
         // Assert - one should have permitted execution, n-1 not.
         var results = tasks.Select(t => t.Result).ToList();
-        results.Count(r => r.permitExecution).Should().Be(1);
-        results.Count(r => !r.permitExecution).Should().Be(parallelContention - 1);
+        results.Count(r => r.PermitExecution).Should().Be(1);
+        results.Count(r => !r.PermitExecution).Should().Be(parallelContention - 1);
     }
 }

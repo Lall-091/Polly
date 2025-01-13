@@ -1,4 +1,4 @@
-﻿///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // ARGUMENTS
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -9,14 +9,14 @@ var configuration = Argument<string>("configuration", "Release");
 // EXTERNAL NUGET TOOLS
 //////////////////////////////////////////////////////////////////////
 
-#Tool "xunit.runner.console&version=2.5.0"
-#Tool "dotnet-stryker&version=3.10.0"
+#Tool "xunit.runner.console&version=2.9.3"
+#Tool "dotnet-stryker&version=4.5.0"
 
 //////////////////////////////////////////////////////////////////////
 // EXTERNAL NUGET LIBRARIES
 //////////////////////////////////////////////////////////////////////
 
-#addin nuget:?package=Cake.FileHelpers&version=6.1.3
+#addin nuget:?package=Cake.FileHelpers&version=7.0.0
 #addin nuget:?package=Newtonsoft.Json&version=13.0.3
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -33,11 +33,11 @@ var artifactsDir = Directory("./artifacts");
 var testResultsDir = System.IO.Path.Combine(artifactsDir, Directory("test-results"));
 
 // NuGet
-var nupkgDestDir = System.IO.Path.Combine(artifactsDir, Directory("nuget-packages"));
+var nupkgDestDir = System.IO.Path.Combine(artifactsDir, Directory("package"), Directory("release"));
 
 // Stryker / Mutation Testing
 var strykerConfig = MakeAbsolute(File("./eng/stryker-config.json"));
-var strykerOutput = MakeAbsolute(Directory("StrykerOutput"));
+var strykerOutput = MakeAbsolute(Directory(System.IO.Path.Combine(artifactsDir, Directory("mutation-report"))));
 
 ///////////////////////////////////////////////////////////////////////////////
 // SETUP / TEARDOWN
@@ -65,19 +65,15 @@ Teardown(_ =>
 Task("__Clean")
     .Does(() =>
 {
-    DirectoryPath[] cleanDirectories = new DirectoryPath[]
-    {
+    CleanDirectories(
+    [
         testResultsDir,
         nupkgDestDir,
         artifactsDir,
         strykerOutput
-  	};
+    ]);
 
-    CleanDirectories(cleanDirectories);
-
-    foreach(var path in cleanDirectories) { EnsureDirectoryExists(path); }
-
-    foreach(var path in solutionPaths)
+    foreach (var path in solutionPaths)
     {
         Information("Cleaning {0}", path);
 
@@ -93,7 +89,7 @@ Task("__Clean")
 Task("__RestoreNuGetPackages")
     .Does(() =>
 {
-    foreach(var solution in solutions)
+    foreach (var solution in solutions)
     {
         Information("Restoring NuGet Packages for {0}", solution);
         DotNetRestore(solution.ToString());
@@ -103,7 +99,7 @@ Task("__RestoreNuGetPackages")
 Task("__BuildSolutions")
     .Does(() =>
 {
-    foreach(var solution in solutions)
+    foreach (var solution in solutions)
     {
         Information("Building {0}", solution);
 
@@ -118,11 +114,25 @@ Task("__BuildSolutions")
             },
         };
 
-        dotNetBuildSettings.MSBuildSettings.Properties["ContinuousIntegrationBuild"] = new[] { Environment.GetEnvironmentVariable("CI") ?? "false" };
-        dotNetBuildSettings.MSBuildSettings.Properties["Deterministic"] = new[] { "true" };
-
         DotNetBuild(solution.ToString(), dotNetBuildSettings);
     }
+});
+
+Task("__ValidateAot")
+    .Does(() =>
+{
+    var aotProject = MakeAbsolute(File("./test/Polly.AotTest/Polly.AotTest.csproj"));
+    var settings = new DotNetPublishSettings
+    {
+        Configuration = configuration,
+        Verbosity = DotNetVerbosity.Minimal,
+        MSBuildSettings = new DotNetMSBuildSettings
+        {
+            TreatAllWarningsAs = MSBuildTreatAllWarningsAs.Error,
+        },
+    };
+
+    DotNetPublish(aotProject.ToString(), settings);
 });
 
 Task("__RunTests")
@@ -132,73 +142,20 @@ Task("__RunTests")
 
     if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GITHUB_SHA")))
     {
-        loggers = new[] { "GitHubActions;report-warnings=false" };
+        loggers = ["GitHubActions;report-warnings=false"];
     }
 
     var projects = GetFiles("./test/**/*.csproj");
 
-    foreach(var proj in projects)
+    foreach (var proj in projects)
     {
         DotNetTest(proj.FullPath, new DotNetTestSettings
         {
             Configuration = configuration,
             Loggers = loggers,
             NoBuild = true,
-            // Commented, because it causes random crashes on Windows
-            // ArgumentCustomization = args => args.Append($"--blame-hang-timeout 10s")
+            ToolTimeout = System.TimeSpan.FromMinutes(10),
         });
-    }
-});
-
-Task("__RunMutationTests")
-    .Does((context) =>
-{
-    var runMutationTests = EnvironmentVariable("RUN_MUTATION_TESTS") switch
-    {
-        "false" => false,
-        _ => true
-    };
-
-    if (!runMutationTests)
-    {
-        return;
-    }
-
-    var oldDirectory = context.Environment.WorkingDirectory;
-    context.Environment.WorkingDirectory = MakeAbsolute(Directory("test"));
-
-    TestProject(File("../src/Polly.Core/Polly.Core.csproj"), File("./Polly.Core.Tests/Polly.Core.Tests.csproj"), "Polly.Core.csproj");
-    TestProject(File("../src/Polly.RateLimiting/Polly.RateLimiting.csproj"), File("./Polly.RateLimiting.Tests/Polly.RateLimiting.Tests.csproj"), "Polly.RateLimiting.csproj");
-    TestProject(File("../src/Polly.Extensions/Polly.Extensions.csproj"), File("./Polly.Extensions.Tests/Polly.Extensions.Tests.csproj"), "Polly.Extensions.csproj");
-    TestProject(File("../src/Polly.Testing/Polly.Testing.csproj"), File("./Polly.Testing.Tests/Polly.Testing.Tests.csproj"), "Polly.Testing.csproj");
-    TestProject(File("../src/Polly/Polly.csproj"), File("./Polly.Specs/Polly.Specs.csproj"), "Polly.csproj");
-
-    context.Environment.WorkingDirectory = oldDirectory;
-
-    void TestProject(FilePath proj, FilePath testProj, string project)
-    {
-        var dotNetBuildSettings = new DotNetBuildSettings
-        {
-            Configuration = "Debug",
-            Verbosity = DotNetVerbosity.Minimal,
-            NoRestore = true
-        };
-
-        DotNetBuild(proj.ToString(), dotNetBuildSettings);
-
-        var strykerPath = Context.Tools.Resolve("Stryker.CLI.dll");
-        var mutationScore = XmlPeek(proj, "/Project/PropertyGroup/MutationScore/text()", new XmlPeekSettings { SuppressWarning = true });
-        var score = int.Parse(mutationScore);
-
-        Information($"Running mutation tests for '{proj}'. Test Project: '{testProj}'");
-
-        var args = $"{strykerPath} --project {project} --test-project {testProj.FullPath} --break-at {score} --config-file {strykerConfig} --output {strykerOutput}/{project}";
-
-        var result = StartProcess("dotnet", args);
-        if (result != 0)
-        {
-            throw new InvalidOperationException($"The mutation testing of '{project}' project failed.");
-        }
     }
 });
 
@@ -216,14 +173,14 @@ Task("__CreateNuGetPackages")
         },
     };
 
-    var packages = new[]
-    {
+    string[] packages =
+    [
         System.IO.Path.Combine(srcDir, "Polly.Core", "Polly.Core.csproj"),
         System.IO.Path.Combine(srcDir, "Polly", "Polly.csproj"),
         System.IO.Path.Combine(srcDir, "Polly.RateLimiting", "Polly.RateLimiting.csproj"),
         System.IO.Path.Combine(srcDir, "Polly.Extensions", "Polly.Extensions.csproj"),
         System.IO.Path.Combine(srcDir, "Polly.Testing", "Polly.Testing.csproj"),
-    };
+    ];
 
     Information("Building NuGet packages");
 
@@ -243,17 +200,23 @@ Task("__ValidateDocs")
     }
 });
 
+Task("__Setup")
+    .IsDependentOn("__Clean")
+    .IsDependentOn("__RestoreNuGetPackages");
+
+Task("__CommonBuild")
+    .IsDependentOn("__Setup")
+    .IsDependentOn("__ValidateDocs")
+    .IsDependentOn("__BuildSolutions");
+
 //////////////////////////////////////////////////////////////////////
 // BUILD TASKS
 //////////////////////////////////////////////////////////////////////
 
 Task("Build")
-    .IsDependentOn("__Clean")
-    .IsDependentOn("__RestoreNuGetPackages")
-    .IsDependentOn("__ValidateDocs")
-    .IsDependentOn("__BuildSolutions")
+    .IsDependentOn("__CommonBuild")
+    .IsDependentOn("__ValidateAot")
     .IsDependentOn("__RunTests")
-    .IsDependentOn("__RunMutationTests")
     .IsDependentOn("__CreateNuGetPackages");
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -262,6 +225,52 @@ Task("Build")
 
 Task("Default")
     .IsDependentOn("Build");
+
+///////////////////////////////////////////////////////////////////////////////
+// MUTATION TESTING TARGETS
+///////////////////////////////////////////////////////////////////////////////
+
+Task("MutationTestsCore")
+    .IsDependentOn("__Setup")
+    .Does((context) =>
+{
+    RunMutationTests(File("./src/Polly.Core/Polly.Core.csproj"), File("./test/Polly.Core.Tests/Polly.Core.Tests.csproj"));
+});
+
+Task("MutationTestsRateLimiting")
+    .IsDependentOn("__Setup")
+    .Does((context) =>
+{
+    RunMutationTests(File("./src/Polly.RateLimiting/Polly.RateLimiting.csproj"), File("./test/Polly.RateLimiting.Tests/Polly.RateLimiting.Tests.csproj"));
+});
+
+Task("MutationTestsExtensions")
+    .IsDependentOn("__Setup")
+    .Does((context) =>
+{
+    RunMutationTests(File("./src/Polly.Extensions/Polly.Extensions.csproj"), File("./test/Polly.Extensions.Tests/Polly.Extensions.Tests.csproj"));
+});
+
+Task("MutationTestsTesting")
+    .IsDependentOn("__Setup")
+    .Does((context) =>
+{
+    RunMutationTests(File("./src/Polly.Testing/Polly.Testing.csproj"), File("./test/Polly.Testing.Tests/Polly.Testing.Tests.csproj"));
+});
+
+Task("MutationTestsLegacy")
+    .IsDependentOn("__Setup")
+    .Does((context) =>
+{
+    RunMutationTests(File("./src/Polly/Polly.csproj"), File("./test/Polly.Specs/Polly.Specs.csproj"));
+});
+
+Task("MutationTests")
+    .IsDependentOn("MutationTestsCore")
+    .IsDependentOn("MutationTestsRateLimiting")
+    .IsDependentOn("MutationTestsExtensions")
+    .IsDependentOn("MutationTestsTesting")
+    .IsDependentOn("MutationTestsLegacy");
 
 ///////////////////////////////////////////////////////////////////////////////
 // EXECUTION
@@ -276,4 +285,22 @@ RunTarget(target);
 string ToolsExePath(string exeFileName) {
     var exePath = System.IO.Directory.GetFiles("./tools", exeFileName, SearchOption.AllDirectories).FirstOrDefault();
     return exePath;
+}
+
+void RunMutationTests(FilePath target, FilePath testProject)
+{
+    var strykerPath = Context.Tools.Resolve("Stryker.CLI.dll");
+    var mutationScore = XmlPeek(target, "/Project/PropertyGroup/MutationScore/text()", new XmlPeekSettings { SuppressWarning = true });
+    var score = int.Parse(mutationScore);
+    var targetFileName = target.GetFilename();
+
+    Information($"Running mutation tests for '{targetFileName}'. Test Project: '{testProject}'");
+
+    var args = $"{strykerPath} --project {targetFileName} --test-project {testProject.FullPath} --break-at {score} --config-file {strykerConfig} --output {strykerOutput}/{targetFileName}";
+
+    var result = StartProcess("dotnet", args);
+    if (result != 0)
+    {
+        throw new InvalidOperationException($"The mutation testing of '{targetFileName}' project failed.");
+    }
 }

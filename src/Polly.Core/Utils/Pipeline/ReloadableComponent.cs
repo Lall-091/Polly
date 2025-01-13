@@ -34,10 +34,7 @@ internal sealed class ReloadableComponent : PipelineComponent
     internal override ValueTask<Outcome<TResult>> ExecuteCore<TResult, TState>(
         Func<ResilienceContext, TState, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context,
-        TState state)
-    {
-        return Component.ExecuteCore(callback, context, state);
-    }
+        TState state) => Component.ExecuteCore(callback, context, state);
 
     public override ValueTask DisposeAsync()
     {
@@ -52,7 +49,9 @@ internal sealed class ReloadableComponent : PipelineComponent
             return;
         }
 
-        _tokenSource = CancellationTokenSource.CreateLinkedTokenSource(_reloadTokens.ToArray());
+#pragma warning disable S3878 // Arrays should not be created for params parameters
+        _tokenSource = CancellationTokenSource.CreateLinkedTokenSource([.. _reloadTokens]);
+#pragma warning restore S3878 // Arrays should not be created for params parameters
         _registration = _tokenSource.Token.Register(() =>
         {
             var context = ResilienceContextPool.Shared.Get().Initialize<VoidResult>(isSynchronous: true);
@@ -65,7 +64,7 @@ internal sealed class ReloadableComponent : PipelineComponent
             }
             catch (Exception e)
             {
-                _reloadTokens = new List<CancellationToken>();
+                _reloadTokens = [];
                 _telemetry.Report(new(ResilienceEventSeverity.Error, ReloadFailedEvent), context, Outcome.FromException(e), new ReloadFailedArguments(e));
                 ResilienceContextPool.Shared.Return(context);
             }
@@ -93,19 +92,21 @@ internal sealed class ReloadableComponent : PipelineComponent
         ResilienceContextPool.Shared.Return(context);
     }
 
-#pragma warning disable S2952 // Classes should "Dispose" of members from the classes' own "Dispose" methods
     private void DisposeRegistration()
     {
         _registration.Dispose();
         _tokenSource.Dispose();
     }
-#pragma warning restore S2952 // Classes should "Dispose" of members from the classes' own "Dispose" methods
 
-    internal record ReloadFailedArguments(Exception Exception);
+    internal sealed record ReloadFailedArguments(Exception Exception);
 
-    internal record DisposedFailedArguments(Exception Exception);
+    internal sealed record DisposedFailedArguments(Exception Exception);
 
-    internal record OnReloadArguments();
+#pragma warning disable S2094 // Classes should not be empty
+#pragma warning disable S3253 // Constructor and destructor declarations should not be redundant
+    internal sealed record OnReloadArguments();
+#pragma warning restore S3253 // Constructor and destructor declarations should not be redundant
+#pragma warning restore S2094 // Classes should not be empty
 
-    internal record Entry(PipelineComponent Component, List<CancellationToken> ReloadTokens, ResilienceStrategyTelemetry Telemetry);
+    internal sealed record Entry(PipelineComponent Component, List<CancellationToken> ReloadTokens, ResilienceStrategyTelemetry Telemetry);
 }

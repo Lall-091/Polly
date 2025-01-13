@@ -1,15 +1,15 @@
 ```
 
-BenchmarkDotNet v0.13.7, Windows 11 (10.0.22621.2134/22H2/2022Update/SunValley2) (Hyper-V)
-Intel Xeon Platinum 8370C CPU 2.80GHz, 1 CPU, 16 logical and 8 physical cores
-.NET SDK 7.0.400
-  [Host] : .NET 7.0.10 (7.0.1023.36312), X64 RyuJIT AVX2
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.22631.4602/23H2/2023Update/SunValley3)
+12th Gen Intel Core i7-1280P, 1 CPU, 20 logical and 14 physical cores
+.NET SDK 9.0.101
+  [Host] : .NET 9.0.0 (9.0.24.52809), X64 RyuJIT AVX2
 
 Job=MediumRun  Toolchain=InProcessEmitToolchain  IterationCount=15  
 LaunchCount=2  WarmupCount=10  
 
 ```
-|          Method |     Mean |   Error |  StdDev | Ratio | RatioSD |   Gen0 | Allocated | Alloc Ratio |
+| Method          | Mean     | Error   | StdDev  | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
 |---------------- |---------:|--------:|--------:|------:|--------:|-------:|----------:|------------:|
-| ExecuteRetry_V7 | 246.2 ns | 3.22 ns | 4.83 ns |  1.00 |    0.00 | 0.0219 |     552 B |        1.00 |
-| ExecuteRetry_V8 | 367.7 ns | 3.71 ns | 5.56 ns |  1.49 |    0.05 |      - |         - |        0.00 |
+| ExecuteRetry_V7 | 125.4 ns | 0.84 ns | 1.20 ns |  1.00 |    0.01 | 0.0408 |     512 B |        1.00 |
+| ExecuteRetry_V8 | 179.7 ns | 0.61 ns | 0.87 ns |  1.43 |    0.02 |      - |         - |        0.00 |

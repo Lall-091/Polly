@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
+using Polly.Testing;
 using Polly.Utils.Pipeline;
 
 namespace Polly.Core.Tests;
@@ -12,14 +13,12 @@ public class GenericResiliencePipelineBuilderTests
     public void Ctor_EnsureDefaults()
     {
         _builder.Name.Should().BeNull();
-        _builder.TimeProvider.Should().Be(TimeProvider.System);
+        _builder.TimeProvider.Should().BeNull();
     }
 
     [Fact]
-    public void CopyCtor_Ok()
-    {
+    public void CopyCtor_Ok() =>
         new ResiliencePipelineBuilder<string>(new ResiliencePipelineBuilder()).Should().NotBeNull();
-    }
 
     [Fact]
     public void Properties_GetSet_Ok()
@@ -64,5 +63,20 @@ public class GenericResiliencePipelineBuilderTests
             .BeOfType<BridgeComponent<string>>().Subject.Strategy
             .Should()
             .Be(strategy);
+    }
+
+    [Fact]
+    public void AddStrategy_ExplicitInstance_Ok()
+    {
+        var builder = new ResiliencePipelineBuilder<string>();
+        var strategy = Substitute.For<ResilienceStrategy<string>>();
+
+        builder.AddStrategy(_ => strategy);
+
+        builder
+            .Build()
+            .GetPipelineDescriptor()
+            .FirstStrategy.StrategyInstance.Should()
+            .BeSameAs(strategy);
     }
 }

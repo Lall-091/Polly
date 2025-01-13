@@ -1,8 +1,5 @@
 # General
 
-> [!NOTE]
-> This is documentation for the upcoming Polly v8 release.
-
 ## Supported targets
 
 Polly targets .NET Standard 2.0+ ([coverage](https://docs.microsoft.com/dotnet/standard/net-standard#net-implementation-support): .NET Core 2.0+, .NET Core 3.0, .NET 6.0+ and later Mono, Xamarin and UWP targets). The NuGet package also includes direct targets for .NET Framework 4.6.1 and 4.7.2.
@@ -24,7 +21,7 @@ By default, asynchronous continuations and retries do not execute on a captured 
 ResilienceContext context = ResilienceContextPool.Shared.Get(continueOnCapturedContext: true);
 
 await pipeline.ExecuteAsync(
-    async context =>
+    static async context =>
     {
         // Execute your code, honoring the ContinueOnCapturedContext setting
         await MyMethodAsync(context.CancellationToken).ConfigureAwait(context.ContinueOnCapturedContext);
@@ -51,14 +48,14 @@ The `CancellationToken` you pass to the `ExecuteAsync(...)` method serves multip
 ```cs
 // Execute your code with cancellation support
 await pipeline.ExecuteAsync(
-    async token => await MyMethodAsync(token),
+    static async token => await MyMethodAsync(token),
     cancellationToken);
 
 // Use ResilienceContext for more advanced scenarios
 ResilienceContext context = ResilienceContextPool.Shared.Get(cancellationToken: cancellationToken);
 
 await pipeline.ExecuteAsync(
-    async context => await MyMethodAsync(context.CancellationToken),
+    static async context => await MyMethodAsync(context.CancellationToken),
     context);
 ```
 <!-- endSnippet -->

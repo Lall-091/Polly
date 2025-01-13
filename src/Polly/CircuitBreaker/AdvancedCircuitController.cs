@@ -1,6 +1,6 @@
 ﻿namespace Polly.CircuitBreaker;
 
-internal class AdvancedCircuitController<TResult> : CircuitStateController<TResult>
+internal sealed class AdvancedCircuitController<TResult> : CircuitStateController<TResult>
 {
     private const short NumberOfWindows = 10;
     internal static readonly long ResolutionOfCircuitTimer = TimeSpan.FromMilliseconds(20).Ticks;
@@ -16,8 +16,8 @@ internal class AdvancedCircuitController<TResult> : CircuitStateController<TResu
         TimeSpan durationOfBreak,
         Action<DelegateResult<TResult>, CircuitState, TimeSpan, Context> onBreak,
         Action<Context> onReset,
-        Action onHalfOpen
-        ) : base(durationOfBreak, onBreak, onReset, onHalfOpen)
+        Action onHalfOpen)
+        : base(durationOfBreak, onBreak, onReset, onHalfOpen)
     {
         _metrics = samplingDuration.Ticks < ResolutionOfCircuitTimer * NumberOfWindows
             ? new SingleHealthMetrics(samplingDuration)
@@ -29,7 +29,7 @@ internal class AdvancedCircuitController<TResult> : CircuitStateController<TResu
 
     public override void OnCircuitReset(Context context)
     {
-        using var _ = TimedLock.Lock(_lock);
+        using var _ = TimedLock.Lock(Lock);
 
         // Is only null during initialization of the current class
         // as the variable is not set, before the base class calls
@@ -41,9 +41,9 @@ internal class AdvancedCircuitController<TResult> : CircuitStateController<TResu
 
     public override void OnActionSuccess(Context context)
     {
-        using var _ = TimedLock.Lock(_lock);
+        using var _ = TimedLock.Lock(Lock);
 
-        switch (_circuitState)
+        switch (InternalCircuitState)
         {
             case CircuitState.HalfOpen:
                 OnCircuitReset(context);
@@ -65,11 +65,11 @@ internal class AdvancedCircuitController<TResult> : CircuitStateController<TResu
 
     public override void OnActionFailure(DelegateResult<TResult> outcome, Context context)
     {
-        using var _ = TimedLock.Lock(_lock);
+        using var _ = TimedLock.Lock(Lock);
 
-        _lastOutcome = outcome;
+        LastOutcome = outcome;
 
-        switch (_circuitState)
+        switch (InternalCircuitState)
         {
             case CircuitState.HalfOpen:
                 Break_NeedsLock(context);
@@ -84,6 +84,7 @@ internal class AdvancedCircuitController<TResult> : CircuitStateController<TResu
                 {
                     Break_NeedsLock(context);
                 }
+
                 break;
 
             case CircuitState.Open:

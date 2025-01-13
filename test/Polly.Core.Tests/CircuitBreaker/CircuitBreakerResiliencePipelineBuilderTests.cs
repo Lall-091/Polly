@@ -7,6 +7,7 @@ namespace Polly.Core.Tests.CircuitBreaker;
 
 public class CircuitBreakerResiliencePipelineBuilderTests
 {
+#pragma warning disable IDE0028
     public static TheoryData<Action<ResiliencePipelineBuilder>> ConfigureData = new()
     {
         builder => builder.AddCircuitBreaker(new CircuitBreakerStrategyOptions
@@ -22,6 +23,7 @@ public class CircuitBreakerResiliencePipelineBuilderTests
             ShouldHandle = _ => PredicateResult.True()
         }),
     };
+#pragma warning restore IDE0028
 
     [MemberData(nameof(ConfigureData))]
     [Theory]
@@ -62,16 +64,20 @@ public class CircuitBreakerResiliencePipelineBuilderTests
     [Fact]
     public void AddCircuitBreaker_IntegrationTest()
     {
+        var cancellationToken = CancellationToken.None;
         int opened = 0;
         int closed = 0;
         int halfOpened = 0;
+
+        var halfBreakDuration = TimeSpan.FromMilliseconds(500);
+        var breakDuration = halfBreakDuration + halfBreakDuration;
 
         var options = new CircuitBreakerStrategyOptions
         {
             FailureRatio = 0.5,
             MinimumThroughput = 10,
             SamplingDuration = TimeSpan.FromSeconds(10),
-            BreakDuration = TimeSpan.FromSeconds(1),
+            BreakDuration = breakDuration,
             ShouldHandle = args => new ValueTask<bool>(args.Outcome.Result is -1),
             OnOpened = _ => { opened++; return default; },
             OnClosed = _ => { closed++; return default; },
@@ -83,26 +89,100 @@ public class CircuitBreakerResiliencePipelineBuilderTests
 
         for (int i = 0; i < 10; i++)
         {
-            strategy.Execute(_ => -1);
+            strategy.Execute(_ => -1, cancellationToken);
         }
 
         // Circuit opened
         opened.Should().Be(1);
         halfOpened.Should().Be(0);
         closed.Should().Be(0);
-        Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0));
+        BrokenCircuitException exception = Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0, cancellationToken));
+        exception.RetryAfter.Should().Be(breakDuration);
+
+        // Circuit still open after some time
+        timeProvider.Advance(halfBreakDuration);
+        opened.Should().Be(1);
+        halfOpened.Should().Be(0);
+        closed.Should().Be(0);
+        exception = Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0, cancellationToken));
+        exception.RetryAfter.Should().Be(halfBreakDuration);
 
         // Circuit Half Opened
-        timeProvider.Advance(options.BreakDuration);
-        strategy.Execute(_ => -1);
-        Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0));
+        timeProvider.Advance(halfBreakDuration);
+        strategy.Execute(_ => -1, cancellationToken);
+        exception = Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0, cancellationToken));
         opened.Should().Be(2);
         halfOpened.Should().Be(1);
         closed.Should().Be(0);
+        exception.RetryAfter.Should().Be(breakDuration);
 
         // Now close it
-        timeProvider.Advance(options.BreakDuration);
-        strategy.Execute(_ => 0);
+        timeProvider.Advance(breakDuration);
+        strategy.Execute(_ => 0, cancellationToken);
+        opened.Should().Be(2);
+        halfOpened.Should().Be(2);
+        closed.Should().Be(1);
+    }
+
+    [Fact]
+    public void AddCircuitBreaker_IntegrationTest_WithBreakDurationGenerator()
+    {
+        var cancellationToken = CancellationToken.None;
+        int opened = 0;
+        int closed = 0;
+        int halfOpened = 0;
+
+        var halfBreakDuration = TimeSpan.FromMilliseconds(500);
+        var breakDuration = halfBreakDuration + halfBreakDuration;
+
+        var options = new CircuitBreakerStrategyOptions
+        {
+            FailureRatio = 0.5,
+            MinimumThroughput = 10,
+            SamplingDuration = TimeSpan.FromSeconds(10),
+            BreakDuration = TimeSpan.FromSeconds(30), // Intentionally long to check it isn't used
+            BreakDurationGenerator = (_) => new ValueTask<TimeSpan>(breakDuration),
+            ShouldHandle = args => new ValueTask<bool>(args.Outcome.Result is -1),
+            OnOpened = _ => { opened++; return default; },
+            OnClosed = _ => { closed++; return default; },
+            OnHalfOpened = (_) => { halfOpened++; return default; }
+        };
+
+        var timeProvider = new FakeTimeProvider();
+        var strategy = new ResiliencePipelineBuilder { TimeProvider = timeProvider }.AddCircuitBreaker(options).Build();
+
+        for (int i = 0; i < 10; i++)
+        {
+            strategy.Execute(_ => -1, cancellationToken);
+        }
+
+        // Circuit opened
+        opened.Should().Be(1);
+        halfOpened.Should().Be(0);
+        closed.Should().Be(0);
+        BrokenCircuitException exception = Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0, cancellationToken));
+        exception.RetryAfter.Should().Be(breakDuration);
+
+        // Circuit still open after some time
+        timeProvider.Advance(halfBreakDuration);
+        opened.Should().Be(1);
+        halfOpened.Should().Be(0);
+        closed.Should().Be(0);
+        exception = Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0, cancellationToken));
+        exception.RetryAfter.Should().Be(halfBreakDuration);
+
+        // Circuit Half Opened
+        timeProvider.Advance(halfBreakDuration);
+        strategy.Execute(_ => -1, cancellationToken);
+        exception = Assert.Throws<BrokenCircuitException>(() => strategy.Execute(_ => 0, cancellationToken));
+        opened.Should().Be(2);
+        halfOpened.Should().Be(1);
+        closed.Should().Be(0);
+        exception.RetryAfter.Should().Be(breakDuration);
+
+        // Now close it
+        timeProvider.Advance(breakDuration);
+        strategy.Execute(_ => 0, cancellationToken);
         opened.Should().Be(2);
         halfOpened.Should().Be(2);
         closed.Should().Be(1);
@@ -111,8 +191,9 @@ public class CircuitBreakerResiliencePipelineBuilderTests
     [Fact]
     public async Task AddCircuitBreakers_WithIsolatedManualControl_ShouldBeIsolated()
     {
+        var cancellationToken = CancellationToken.None;
         var manualControl = new CircuitBreakerManualControl();
-        await manualControl.IsolateAsync();
+        await manualControl.IsolateAsync(cancellationToken);
 
         var strategy1 = new ResiliencePipelineBuilder()
             .AddCircuitBreaker(new() { ManualControl = manualControl })
@@ -122,10 +203,10 @@ public class CircuitBreakerResiliencePipelineBuilderTests
             .AddCircuitBreaker(new() { ManualControl = manualControl })
             .Build();
 
-        strategy1.Invoking(s => s.Execute(() => { })).Should().Throw<IsolatedCircuitException>();
-        strategy2.Invoking(s => s.Execute(() => { })).Should().Throw<IsolatedCircuitException>();
+        strategy1.Invoking(s => s.Execute(() => { })).Should().Throw<IsolatedCircuitException>().Where(e => e.RetryAfter == null);
+        strategy2.Invoking(s => s.Execute(() => { })).Should().Throw<IsolatedCircuitException>().Where(e => e.RetryAfter == null);
 
-        await manualControl.CloseAsync();
+        await manualControl.CloseAsync(cancellationToken);
 
         strategy1.Execute(() => { });
         strategy2.Execute(() => { });

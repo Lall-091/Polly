@@ -20,10 +20,24 @@ public sealed class ResilienceProperties
     /// <returns>True, if a property was retrieved.</returns>
     public bool TryGetValue<TValue>(ResiliencePropertyKey<TValue> key, [MaybeNullWhen(false)] out TValue value)
     {
-        if (Options.TryGetValue(key.Key, out object? val) && val is TValue typedValue)
+        if (Options.TryGetValue(key.Key, out object? val))
         {
-            value = typedValue;
-            return true;
+            if (val is TValue typedValue)
+            {
+                value = typedValue;
+                return true;
+            }
+            else if (val is null)
+            {
+                // We have to use null-forgiving operator "!" here to suppress a null-state analysis warning.
+                // The reason is the following. The output type "TValue" doesn't have any type constraints as
+                // "notnull", "class" or "struct", therefore the analyzer considers "TValue" as non-nullable
+                // and warns us that we're assigning "null" to it. But that's not correct, because "TValue"
+                // could be a nullable type, e.g. "string?", and assigning "null" to it is correct. Therefore
+                // it is reasonable to use "!" here to suppress the warning.
+                value = default!;
+                return true;
+            }
         }
 
         value = default;
@@ -53,15 +67,10 @@ public sealed class ResilienceProperties
     /// <param name="key">Strongly typed key to get the value of the property.</param>
     /// <param name="value">Returns the value of the property.</param>
     /// <typeparam name="TValue">The type of property value as defined by <paramref name="key"/> parameter.</typeparam>
-    public void Set<TValue>(ResiliencePropertyKey<TValue> key, TValue value)
-    {
-        Options[key.Key] = value;
-    }
+    public void Set<TValue>(ResiliencePropertyKey<TValue> key, TValue value) => Options[key.Key] = value;
 
-    internal void Replace(ResilienceProperties other)
+    internal void AddOrReplaceProperties(ResilienceProperties other)
     {
-        Clear();
-
         // try to avoid enumerator allocation
         if (other.Options is Dictionary<string, object?> otherOptions)
         {
@@ -78,7 +87,5 @@ public sealed class ResilienceProperties
             }
         }
     }
-
-    internal void Clear() => Options.Clear();
 }
 

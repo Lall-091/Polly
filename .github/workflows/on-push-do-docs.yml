@@ -2,7 +2,7 @@ name: on-push-do-docs
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     paths: [ "src/Snippets/**" ]
   workflow_dispatch:
 
@@ -12,24 +12,25 @@ jobs:
   update-docs:
     name: update-docs
     runs-on: ubuntu-latest
+    if: github.event.repository.fork == false
 
     steps:
 
       - name: Generate GitHub application token
         id: generate-application-token
-        uses: peter-murray/workflow-application-token-action@8e1ba3bf1619726336414f1014e37f17fbadf1db # v2.1.0
+        uses: peter-murray/workflow-application-token-action@8e4e6fbf6fcc8a272781d97597969d21b3812974 # v4.0.0
         with:
           application_id: ${{ secrets.POLLY_UPDATER_BOT_APP_ID }}
           application_private_key: ${{ secrets.POLLY_UPDATER_BOT_KEY }}
           permissions: "contents:write, pull_requests:write"
 
       - name: Checkout code
-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           token: ${{ steps.generate-application-token.outputs.token }}
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@3447fd6a9f9e57506b15f895c5b76d3b197dc7c2 # v3.2.0
+        uses: actions/setup-dotnet@87b7050bc53ea08284295505d98d2aa94301e852 # v4.2.0
 
       - name: Update documentation
         id: update-docs
@@ -76,7 +77,7 @@ jobs:
 
       - name: Create pull request
         if: steps.update-docs.outputs.updated-docs == 'true'
-        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           github-token: ${{ steps.generate-application-token.outputs.token }}
           script: |

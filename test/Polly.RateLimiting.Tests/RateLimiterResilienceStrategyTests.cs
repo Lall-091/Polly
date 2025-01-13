@@ -12,10 +12,8 @@ public class RateLimiterResilienceStrategyTests
     private Func<OnRateLimiterRejectedArguments, ValueTask>? _event;
 
     [Fact]
-    public void Ctor_Ok()
-    {
+    public void Ctor_Ok() =>
         Create().Should().NotBeNull();
-    }
 
     [Fact]
     public async Task Execute_HappyPath()
@@ -72,13 +70,13 @@ public class RateLimiterResilienceStrategyTests
         var context = ResilienceContextPool.Shared.Get(cts.Token);
         var outcome = await strategy.ExecuteOutcomeAsync((_, _) => Outcome.FromResultAsValueTask("dummy"), context, "state");
 
-        outcome.Exception
+        RateLimiterRejectedException exception = outcome.Exception
             .Should()
-            .BeOfType<RateLimiterRejectedException>().Subject
-            .RetryAfter
-            .Should().Be((TimeSpan?)metadata);
+            .BeOfType<RateLimiterRejectedException>().Subject;
 
-        outcome.Exception!.StackTrace.Should().Contain("Execute_LeaseRejected");
+        exception.RetryAfter.Should().Be((TimeSpan?)metadata);
+        exception.StackTrace.Should().Contain("Execute_LeaseRejected");
+        exception.TelemetrySource.Should().NotBeNull();
 
         eventCalled.Should().Be(hasEvents);
 
@@ -103,7 +101,9 @@ public class RateLimiterResilienceStrategyTests
         }
         else
         {
+#pragma warning disable S6966
             strategy.Dispose();
+#pragma warning restore S6966
         }
 
         await limiter.Invoking(l => l.AcquireAsync(1).AsTask()).Should().ThrowAsync<ObjectDisposedException>();
@@ -132,7 +132,7 @@ public class RateLimiterResilienceStrategyTests
         _limiter
             .GetType()
             .GetMethod("AcquireAsyncCore", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(_limiter, new object[] { 1, token })
+            .Invoke(_limiter, [1, token])
             .Returns(result);
     }
 

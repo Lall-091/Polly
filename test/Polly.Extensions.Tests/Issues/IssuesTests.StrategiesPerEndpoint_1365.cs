@@ -13,7 +13,7 @@ public partial class IssuesTests
     [Fact]
     public void StrategiesPerEndpoint_1365()
     {
-        var events = new List<MeteringEvent>();
+        var events = new List<MeteringEvent>(1024);
         using var listener = TestUtilities.EnablePollyMetering(events);
         var services = new ServiceCollection();
 
@@ -98,8 +98,8 @@ public partial class IssuesTests
 
         pipeline1.Execute(() => { });
         events.Should().HaveCount(5);
-        events[0].Tags["pipeline-name"].Should().Be("endpoint-pipeline");
-        events[0].Tags["pipeline-instance"].Should().Be("Endpoint 1/Resource 1");
+        events[0].Tags["pipeline.name"].Should().Be("endpoint-pipeline");
+        events[0].Tags["pipeline.instance"].Should().Be("Endpoint 1/Resource 1");
     }
 
     public class EndpointOptions

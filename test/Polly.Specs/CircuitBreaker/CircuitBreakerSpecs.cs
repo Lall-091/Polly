@@ -321,11 +321,11 @@ public class CircuitBreakerSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should permit first execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should reject a second execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
     }
 
@@ -351,11 +351,11 @@ public class CircuitBreakerSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should permit first execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should reject a second execution in the same time window.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // Allow another time window to pass (breaker should still be HalfOpen).
@@ -363,7 +363,7 @@ public class CircuitBreakerSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should now permit another trial execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
     }
 
@@ -450,9 +450,15 @@ public class CircuitBreakerSpecs : IDisposable
         permitFirstExecutionEnd.Set();
         Task.WaitAll(new[] { firstExecution, secondExecution }, testTimeoutToExposeDeadlocks).Should().BeTrue();
         if (firstExecution.IsFaulted)
+        {
             throw firstExecution!.Exception!;
+        }
+
         if (secondExecution.IsFaulted)
+        {
             throw secondExecution!.Exception!;
+        }
+
         firstExecution.Status.Should().Be(TaskStatus.RanToCompletion);
         secondExecution.Status.Should().Be(TaskStatus.RanToCompletion);
 
@@ -551,9 +557,15 @@ public class CircuitBreakerSpecs : IDisposable
         permitFirstExecutionEnd.Set();
         Task.WaitAll(new[] { firstExecution, secondExecution }, testTimeoutToExposeDeadlocks).Should().BeTrue();
         if (firstExecution.IsFaulted)
+        {
             throw firstExecution!.Exception!;
+        }
+
         if (secondExecution.IsFaulted)
+        {
             throw secondExecution!.Exception!;
+        }
+
         firstExecution.Status.Should().Be(TaskStatus.RanToCompletion);
         secondExecution.Status.Should().Be(TaskStatus.RanToCompletion);
 
@@ -811,9 +823,16 @@ public class CircuitBreakerSpecs : IDisposable
         permitLongRunningExecutionToReturnItsFailure.Set();
 
         // Graceful cleanup: allow executions time to end naturally; timeout if any deadlocks; expose any execution faults.  This validates the test ran as expected (and background delegates are complete) before we assert on outcomes.
+#if NET
+        longRunningExecution.Wait(testTimeoutToExposeDeadlocks, CancellationToken.None).Should().BeTrue();
+#else
         longRunningExecution.Wait(testTimeoutToExposeDeadlocks).Should().BeTrue();
+#endif
         if (longRunningExecution.IsFaulted)
+        {
             throw longRunningExecution!.Exception!;
+        }
+
         longRunningExecution.Status.Should().Be(TaskStatus.RanToCompletion);
 
         // onBreak() should still only have been called once.
@@ -1067,7 +1086,7 @@ public class CircuitBreakerSpecs : IDisposable
     [Fact]
     public void Should_call_onbreak_with_a_state_of_half_open()
     {
-        List<CircuitState> transitionedStates = new List<CircuitState>();
+        List<CircuitState> transitionedStates = [];
 
         Action<Exception, CircuitState, TimeSpan, Context> onBreak = (_, state, _, _) => { transitionedStates.Add(state); };
         Action<Context> onReset = _ => { };
@@ -1209,7 +1228,7 @@ public class CircuitBreakerSpecs : IDisposable
             .Should().Throw<DivideByZeroException>();
 
         breaker.Invoking(x => x.RaiseException<DivideByZeroException>(
-            new { key1 = "value1", key2 = "value2" }.AsDictionary())).Should().Throw<DivideByZeroException>();
+            CreateDictionary("key1", "value1", "key2", "value2"))).Should().Throw<DivideByZeroException>();
 
         breaker.CircuitState.Should().Be(CircuitState.Open);
 
@@ -1245,7 +1264,7 @@ public class CircuitBreakerSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // first call after duration should invoke onReset, with context
-        breaker.Execute(_ => { }, new { key1 = "value1", key2 = "value2" }.AsDictionary());
+        breaker.Execute(_ => { }, CreateDictionary("key1", "value1", "key2", "value2"));
 
         contextData.Should()
             .ContainKeys("key1", "key2").And
@@ -1255,7 +1274,7 @@ public class CircuitBreakerSpecs : IDisposable
     [Fact]
     public void Context_should_be_empty_if_execute_not_called_with_any_context_data()
     {
-        IDictionary<string, object> contextData = new { key1 = "value1", key2 = "value2" }.AsDictionary();
+        IDictionary<string, object> contextData = CreateDictionary("key1", "value1", "key2", "value2");
 
         Action<Exception, TimeSpan, Context> onBreak = (_, _, context) => { contextData = context; };
         Action<Context> onReset = _ => { };
@@ -1296,7 +1315,7 @@ public class CircuitBreakerSpecs : IDisposable
             .Should().Throw<DivideByZeroException>();
 
         // 2 exception raised, circuit is now open
-        breaker.Invoking(x => x.RaiseException<DivideByZeroException>(new { key = "original_value" }.AsDictionary()))
+        breaker.Invoking(x => x.RaiseException<DivideByZeroException>(CreateDictionary("key", "original_value")))
             .Should().Throw<DivideByZeroException>();
         breaker.CircuitState.Should().Be(CircuitState.Open);
         contextValue.Should().Be("original_value");
@@ -1309,7 +1328,7 @@ public class CircuitBreakerSpecs : IDisposable
         // but not yet reset
 
         // first call after duration is successful, so circuit should reset
-        breaker.Execute(_ => { }, new { key = "new_value" }.AsDictionary());
+        breaker.Execute(_ => { }, CreateDictionary("key", "new_value"));
         breaker.CircuitState.Should().Be(CircuitState.Closed);
         contextValue.Should().Be("new_value");
     }
@@ -1435,8 +1454,6 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1446,8 +1463,11 @@ public class CircuitBreakerSpecs : IDisposable
             AttemptDuringWhichToCancel = null,
         };
 
-        breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().NotThrow();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().NotThrow();
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1460,9 +1480,6 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1472,11 +1489,15 @@ public class CircuitBreakerSpecs : IDisposable
             AttemptDuringWhichToCancel = null, // Cancellation token cancelled manually below - before any scenario execution.
         };
 
-        cancellationTokenSource.Cancel();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            cancellationTokenSource.Cancel();
 
-        breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(cancellationToken);
+            breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(0);
     }
@@ -1489,9 +1510,6 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1502,9 +1520,14 @@ public class CircuitBreakerSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1517,9 +1540,6 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1530,9 +1550,14 @@ public class CircuitBreakerSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1545,8 +1570,6 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1557,8 +1580,11 @@ public class CircuitBreakerSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<DivideByZeroException>();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<DivideByZeroException>();
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1580,13 +1606,8 @@ public class CircuitBreakerSpecs : IDisposable
 
         // Circuit is now broken.
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
-
-        cancellationTokenSource.Cancel();
 
         PolicyExtensions.ExceptionAndOrCancellationScenario scenario = new PolicyExtensions.ExceptionAndOrCancellationScenario
         {
@@ -1595,9 +1616,15 @@ public class CircuitBreakerSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            cancellationTokenSource.Cancel();
+
+            breaker.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(0);
     }
@@ -1612,23 +1639,24 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource policyCancellationTokenSource = new CancellationTokenSource();
-        CancellationToken policyCancellationToken = policyCancellationTokenSource.Token;
-
-        CancellationTokenSource implicitlyCapturedActionCancellationTokenSource = new CancellationTokenSource();
-        CancellationToken implicitlyCapturedActionCancellationToken = implicitlyCapturedActionCancellationTokenSource.Token;
-
-        implicitlyCapturedActionCancellationTokenSource.Cancel();
-
         int attemptsInvoked = 0;
 
-        breaker.Invoking(x => x.Execute(_ =>
+        using (var policyCancellationTokenSource = new CancellationTokenSource())
+        using (var implicitlyCapturedActionCancellationTokenSource = new CancellationTokenSource())
         {
-            attemptsInvoked++;
-            implicitlyCapturedActionCancellationToken.ThrowIfCancellationRequested();
-        }, policyCancellationToken))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(implicitlyCapturedActionCancellationToken);
+            CancellationToken policyCancellationToken = policyCancellationTokenSource.Token;
+            CancellationToken implicitlyCapturedActionCancellationToken = implicitlyCapturedActionCancellationTokenSource.Token;
+
+            implicitlyCapturedActionCancellationTokenSource.Cancel();
+
+            breaker.Invoking(x => x.Execute(_ =>
+            {
+                attemptsInvoked++;
+                implicitlyCapturedActionCancellationToken.ThrowIfCancellationRequested();
+            }, policyCancellationToken))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(implicitlyCapturedActionCancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1641,9 +1669,6 @@ public class CircuitBreakerSpecs : IDisposable
                         .Handle<DivideByZeroException>()
                         .CircuitBreaker(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1655,8 +1680,13 @@ public class CircuitBreakerSpecs : IDisposable
             AttemptDuringWhichToCancel = null,
         };
 
-        breaker.Invoking(x => result = x.RaiseExceptionAndOrCancellation<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true))
-            .Should().NotThrow();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            breaker.Invoking(x => result = x.RaiseExceptionAndOrCancellation<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true))
+                .Should().NotThrow();
+        }
 
         result.Should().BeTrue();
 
@@ -1670,9 +1700,6 @@ public class CircuitBreakerSpecs : IDisposable
                          .Handle<DivideByZeroException>()
                          .CircuitBreaker(2, TimeSpan.FromMinutes(1));
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1685,8 +1712,12 @@ public class CircuitBreakerSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        breaker.Invoking(x => result = x.RaiseExceptionAndOrCancellation<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true))
-            .Should().Throw<OperationCanceledException>().And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            breaker.Invoking(x => result = x.RaiseExceptionAndOrCancellation<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true))
+                .Should().Throw<OperationCanceledException>().And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         result.Should().Be(null);
 

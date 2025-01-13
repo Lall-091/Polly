@@ -6,17 +6,15 @@ namespace Polly.Core.Tests.Fallback;
 public class FallbackResilienceStrategyTests
 {
     private readonly FallbackStrategyOptions<string> _options = new();
-    private readonly List<TelemetryEventArguments<object, object>> _args = new();
+    private readonly List<TelemetryEventArguments<object, object>> _args = [];
     private readonly ResilienceStrategyTelemetry _telemetry;
     private FallbackHandler<string>? _handler;
 
     public FallbackResilienceStrategyTests() => _telemetry = TestUtilities.CreateResilienceTelemetry(_args.Add);
 
     [Fact]
-    public void Ctor_Ok()
-    {
+    public void Ctor_Ok() =>
         Create().Should().NotBeNull();
-    }
 
     [Fact]
     public void Handle_Result_Ok()
@@ -122,10 +120,8 @@ public class FallbackResilienceStrategyTests
 
     private void SetHandler(
         Func<Outcome<string>, bool> shouldHandle,
-        Func<Outcome<string>> fallback)
-    {
+        Func<Outcome<string>> fallback) =>
         _handler = FallbackHelper.CreateHandler(shouldHandle, fallback);
-    }
 
     private ResiliencePipeline<string> Create()
         => new FallbackResilienceStrategy<string>(_handler!, _options.OnFallback, _telemetry).AsPipeline();

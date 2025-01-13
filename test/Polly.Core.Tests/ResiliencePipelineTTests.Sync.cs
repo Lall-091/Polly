@@ -5,6 +5,7 @@ namespace Polly.Core.Tests;
 
 public partial class ResiliencePipelineTests
 {
+#pragma warning disable IDE0028
     public static TheoryData<Action<ResiliencePipeline<string>>> ExecuteGenericStrategyData = new()
     {
         strategy =>
@@ -48,7 +49,7 @@ public partial class ResiliencePipelineTests
 
         strategy =>
         {
-            var context = ResilienceContextPool.Shared.Get();
+            var context = ResilienceContextPool.Shared.Get(CancellationToken);
             context.CancellationToken = CancellationToken;
             strategy.Execute(
                 (context, state) =>
@@ -64,7 +65,7 @@ public partial class ResiliencePipelineTests
 
         strategy =>
         {
-            var context = ResilienceContextPool.Shared.Get();
+            var context = ResilienceContextPool.Shared.Get(CancellationToken);
             context.CancellationToken = CancellationToken;
             strategy.Execute(
                 (context) =>
@@ -73,8 +74,9 @@ public partial class ResiliencePipelineTests
                     return "res";
                 },
                 context).Should().Be("res");
-        }
+        },
     };
+#pragma warning restore IDE0028
 
     [MemberData(nameof(ExecuteGenericStrategyData))]
     [Theory]
@@ -85,9 +87,9 @@ public partial class ResiliencePipelineTests
             Before = (c, _) =>
             {
                 c.IsSynchronous.Should().BeTrue();
-                c.ResultType.Should().Be(typeof(string));
+                c.ResultType.Should().Be<string>();
             },
-        }), DisposeBehavior.Allow);
+        }), DisposeBehavior.Allow, null);
 
         execute(pipeline);
     }

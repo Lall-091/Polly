@@ -2,10 +2,10 @@
 
 namespace Polly.Core.Tests.Utils;
 
-public class StrategyHelperTests
+public static class StrategyHelperTests
 {
     [Fact]
-    public async Task ExecuteCallbackSafeAsync_Cancelled_EnsureOperationCanceledException()
+    public static async Task ExecuteCallbackSafeAsync_Cancelled_EnsureOperationCanceledException()
     {
         using var token = new CancellationTokenSource();
         token.Cancel();
@@ -18,11 +18,10 @@ public class StrategyHelperTests
         outcome.Exception.Should().BeOfType<OperationCanceledException>();
     }
 
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    [Theory]
-    public async Task ExecuteCallbackSafeAsync_CallbackThrows_EnsureExceptionWrapped(bool isAsync)
-    {
+    public static async Task ExecuteCallbackSafeAsync_CallbackThrows_EnsureExceptionWrapped(bool isAsync) =>
         await TestUtilities.AssertWithTimeoutAsync(async () =>
         {
             var outcome = await StrategyHelper.ExecuteCallbackSafeAsync<string, string>(
@@ -40,5 +39,27 @@ public class StrategyHelperTests
 
             outcome.Exception.Should().BeOfType<InvalidOperationException>();
         });
-    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public static async Task ExecuteCallbackSafeAsync_AsyncCallback_CompletedOk(bool isAsync) =>
+        await TestUtilities.AssertWithTimeoutAsync(async () =>
+        {
+            var outcomeTask = StrategyHelper.ExecuteCallbackSafeAsync(
+                async (_, _) =>
+                {
+                    if (isAsync)
+                    {
+                        await Task.Delay(15);
+                    }
+
+                    return Outcome.FromResult("success");
+                },
+                ResilienceContextPool.Shared.Get(),
+                "dummy");
+
+            outcomeTask.IsCompleted.Should().Be(!isAsync);
+            (await outcomeTask).Result.Should().Be("success");
+        });
 }

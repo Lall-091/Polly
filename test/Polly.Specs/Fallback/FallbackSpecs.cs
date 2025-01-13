@@ -765,7 +765,7 @@ public class FallbackSpecs
             .Fallback(fallbackAction, onFallback);
 
         fallbackPolicy.Invoking(p => p.Execute(_ => throw new ArgumentNullException(),
-            new { key1 = "value1", key2 = "value2" }.AsDictionary()))
+            CreateDictionary("key1", "value1", "key2", "value2")))
             .Should().NotThrow();
 
         contextData.Should()
@@ -787,7 +787,7 @@ public class FallbackSpecs
             .Fallback(fallbackAction, onFallback);
 
         fallbackPolicy.Invoking(p => p.ExecuteAndCapture(_ => throw new ArgumentNullException(),
-            new { key1 = "value1", key2 = "value2" }.AsDictionary()))
+            CreateDictionary("key1", "value1", "key2", "value2")))
             .Should().NotThrow();
 
         contextData.Should()
@@ -810,11 +810,11 @@ public class FallbackSpecs
             .Fallback(fallbackAction, onFallback);
 
         fallbackPolicy.Invoking(
-            p => p.Execute(_ => throw new ArgumentNullException(), new { key = "value1" }.AsDictionary()))
+            p => p.Execute(_ => throw new ArgumentNullException(), CreateDictionary("key", "value1")))
             .Should().NotThrow();
 
         fallbackPolicy.Invoking(
-            p => p.Execute(_ => throw new DivideByZeroException(), new { key = "value2" }.AsDictionary()))
+            p => p.Execute(_ => throw new DivideByZeroException(), CreateDictionary("key", "value2")))
             .Should().NotThrow();
 
         contextData.Count.Should().Be(2);
@@ -859,7 +859,7 @@ public class FallbackSpecs
             .Fallback(fallbackAction, onFallback);
 
         fallbackPolicy.Invoking(p => p.Execute(_ => throw new ArgumentNullException(),
-                new { key1 = "value1", key2 = "value2" }.AsDictionary()))
+                CreateDictionary("key1", "value1", "key2", "value2")))
             .Should().NotThrow();
 
         contextData.Should()
@@ -881,7 +881,7 @@ public class FallbackSpecs
             .Fallback(fallbackAction, onFallback);
 
         fallbackPolicy.Invoking(p => p.ExecuteAndCapture(_ => throw new ArgumentNullException(),
-                new { key1 = "value1", key2 = "value2" }.AsDictionary()))
+                CreateDictionary("key1", "value1", "key2", "value2")))
             .Should().NotThrow();
 
         contextData.Should()
@@ -949,7 +949,7 @@ public class FallbackSpecs
             .Should().NotThrow();
 
         fallbackException.Should().NotBeNull()
-            .And.BeOfType(typeof(ArgumentNullException));
+            .And.BeOfType<ArgumentNullException>();
     }
 
     [Fact]
@@ -1030,8 +1030,6 @@ public class FallbackSpecs
                                 .Handle<DivideByZeroException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1041,8 +1039,12 @@ public class FallbackSpecs
             AttemptDuringWhichToCancel = null,
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().NotThrow();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().NotThrow();
+        }
+
         attemptsInvoked.Should().Be(1);
 
         fallbackActionExecuted.Should().BeFalse();
@@ -1058,8 +1060,6 @@ public class FallbackSpecs
                                 .Handle<DivideByZeroException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1069,8 +1069,12 @@ public class FallbackSpecs
             AttemptDuringWhichToCancel = null,
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().NotThrow();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().NotThrow();
+        }
+
         attemptsInvoked.Should().Be(1);
 
         fallbackActionExecuted.Should().BeTrue();
@@ -1086,9 +1090,6 @@ public class FallbackSpecs
                                 .Handle<DivideByZeroException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1098,11 +1099,17 @@ public class FallbackSpecs
             AttemptDuringWhichToCancel = null, // Cancellation token cancelled manually below - before any scenario execution.
         };
 
-        cancellationTokenSource.Cancel();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(cancellationToken);
+            cancellationTokenSource.Cancel();
+
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(cancellationToken);
+        }
+
         attemptsInvoked.Should().Be(0);
 
         fallbackActionExecuted.Should().BeFalse();
@@ -1119,9 +1126,6 @@ public class FallbackSpecs
                                 .Handle<DivideByZeroException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1132,9 +1136,14 @@ public class FallbackSpecs
             ActionObservesCancellation = true
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<OperationCanceledException>()
-            .And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<OperationCanceledException>()
+                .And.CancellationToken.Should().Be(cancellationToken);
+        }
+
         attemptsInvoked.Should().Be(1);
 
         fallbackActionExecuted.Should().BeFalse();
@@ -1151,8 +1160,6 @@ public class FallbackSpecs
                                 .Or<OperationCanceledException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1163,8 +1170,12 @@ public class FallbackSpecs
             ActionObservesCancellation = true
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().NotThrow();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().NotThrow();
+        }
+
         attemptsInvoked.Should().Be(1);
 
         fallbackActionExecuted.Should().BeTrue();
@@ -1180,8 +1191,6 @@ public class FallbackSpecs
                                 .Handle<DivideByZeroException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1192,10 +1201,13 @@ public class FallbackSpecs
             ActionObservesCancellation = false
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().NotThrow();
-        attemptsInvoked.Should().Be(1);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().NotThrow();
+        }
 
+        attemptsInvoked.Should().Be(1);
         fallbackActionExecuted.Should().BeFalse();
     }
 
@@ -1209,8 +1221,6 @@ public class FallbackSpecs
                                 .Handle<DivideByZeroException>()
                                 .Fallback(fallbackAction);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1221,8 +1231,12 @@ public class FallbackSpecs
             ActionObservesCancellation = false
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<NullReferenceException>(scenario, cancellationTokenSource, onExecute))
-            .Should().Throw<NullReferenceException>();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<NullReferenceException>(scenario, cancellationTokenSource, onExecute))
+                .Should().Throw<NullReferenceException>();
+        }
+
         attemptsInvoked.Should().Be(1);
 
         fallbackActionExecuted.Should().BeFalse();
@@ -1233,8 +1247,6 @@ public class FallbackSpecs
     {
         bool fallbackActionExecuted = false;
         Action fallbackAction = () => { fallbackActionExecuted = true; };
-
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
 
         FallbackPolicy policy = Policy
                                 .Handle<DivideByZeroException>()
@@ -1250,8 +1262,12 @@ public class FallbackSpecs
             ActionObservesCancellation = false
         };
 
-        policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().NotThrow();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            policy.Invoking(x => x.RaiseExceptionAndOrCancellation<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().NotThrow();
+        }
+
         attemptsInvoked.Should().Be(1);
 
         fallbackActionExecuted.Should().BeTrue();

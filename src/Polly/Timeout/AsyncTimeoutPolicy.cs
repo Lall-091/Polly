@@ -12,8 +12,7 @@ public class AsyncTimeoutPolicy : AsyncPolicy, ITimeoutPolicy
     internal AsyncTimeoutPolicy(
         Func<Context, TimeSpan> timeoutProvider,
         TimeoutStrategy timeoutStrategy,
-        Func<Context, TimeSpan, Task, Exception, Task> onTimeoutAsync
-        )
+        Func<Context, TimeSpan, Task, Exception, Task> onTimeoutAsync)
     {
         _timeoutProvider = timeoutProvider ?? throw new ArgumentNullException(nameof(timeoutProvider));
         _timeoutStrategy = timeoutStrategy;
@@ -26,15 +25,22 @@ public class AsyncTimeoutPolicy : AsyncPolicy, ITimeoutPolicy
         Func<Context, CancellationToken, Task<TResult>> action,
         Context context,
         CancellationToken cancellationToken,
-        bool continueOnCapturedContext) =>
-        AsyncTimeoutEngine.ImplementationAsync(
+        bool continueOnCapturedContext)
+    {
+        if (action is null)
+        {
+            throw new ArgumentNullException(nameof(action));
+        }
+
+        return AsyncTimeoutEngine.ImplementationAsync(
             action,
             context,
-            cancellationToken,
             _timeoutProvider,
             _timeoutStrategy,
             _onTimeoutAsync,
-            continueOnCapturedContext);
+            continueOnCapturedContext,
+            cancellationToken);
+    }
 }
 
 /// <summary>
@@ -44,8 +50,8 @@ public class AsyncTimeoutPolicy : AsyncPolicy, ITimeoutPolicy
 public class AsyncTimeoutPolicy<TResult> : AsyncPolicy<TResult>, ITimeoutPolicy<TResult>
 {
     private readonly TimeoutStrategy _timeoutStrategy;
-    private Func<Context, TimeSpan> _timeoutProvider;
-    private Func<Context, TimeSpan, Task, Exception, Task> _onTimeoutAsync;
+    private readonly Func<Context, TimeSpan> _timeoutProvider;
+    private readonly Func<Context, TimeSpan, Task, Exception, Task> _onTimeoutAsync;
 
     internal AsyncTimeoutPolicy(
         Func<Context, TimeSpan> timeoutProvider,
@@ -63,13 +69,20 @@ public class AsyncTimeoutPolicy<TResult> : AsyncPolicy<TResult>, ITimeoutPolicy<
         Func<Context, CancellationToken, Task<TResult>> action,
         Context context,
         CancellationToken cancellationToken,
-        bool continueOnCapturedContext) =>
-        AsyncTimeoutEngine.ImplementationAsync(
+        bool continueOnCapturedContext)
+    {
+        if (action is null)
+        {
+            throw new ArgumentNullException(nameof(action));
+        }
+
+        return AsyncTimeoutEngine.ImplementationAsync(
             action,
             context,
-            cancellationToken,
             _timeoutProvider,
             _timeoutStrategy,
             _onTimeoutAsync,
-            continueOnCapturedContext);
+            continueOnCapturedContext,
+            cancellationToken);
+    }
 }

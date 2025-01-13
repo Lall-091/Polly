@@ -2,6 +2,8 @@
 
 public abstract class RateLimitPolicySpecsBase : RateLimitSpecsBase
 {
+    protected static CancellationToken CancellationToken => CancellationToken.None;
+
     protected abstract IRateLimitPolicy GetPolicyViaSyntax(
         int numberOfExecutions,
         TimeSpan perTimeSpan);
@@ -11,7 +13,7 @@ public abstract class RateLimitPolicySpecsBase : RateLimitSpecsBase
         TimeSpan perTimeSpan,
         int maxBurst);
 
-    protected abstract (bool, TimeSpan) TryExecuteThroughPolicy(IRateLimitPolicy policy);
+    protected abstract (bool PermitExecution, TimeSpan RetryAfter) TryExecuteThroughPolicy(IRateLimitPolicy policy);
 
     protected void ShouldPermitAnExecution(IRateLimitPolicy policy)
     {
@@ -31,16 +33,16 @@ public abstract class RateLimitPolicySpecsBase : RateLimitSpecsBase
 
     protected void ShouldNotPermitAnExecution(IRateLimitPolicy policy, TimeSpan? retryAfter = null)
     {
-        (bool permitExecution, TimeSpan retryAfter) canExecute = TryExecuteThroughPolicy(policy);
+        (bool PermitExecution, TimeSpan RetryAfter) canExecute = TryExecuteThroughPolicy(policy);
 
-        canExecute.permitExecution.Should().BeFalse();
+        canExecute.PermitExecution.Should().BeFalse();
         if (retryAfter == null)
         {
-            canExecute.retryAfter.Should().BeGreaterThan(TimeSpan.Zero);
+            canExecute.RetryAfter.Should().BeGreaterThan(TimeSpan.Zero);
         }
         else
         {
-            canExecute.retryAfter.Should().Be(retryAfter.Value);
+            canExecute.RetryAfter.Should().Be(retryAfter.Value);
         }
     }
 
@@ -281,8 +283,8 @@ public abstract class RateLimitPolicySpecsBase : RateLimitSpecsBase
         var rateLimiter = GetPolicyViaSyntax(1, onePer);
 
         // Arrange - parallel tasks all waiting on a manual reset event.
-        ManualResetEventSlim gate = new();
-        Task<(bool permitExecution, TimeSpan retryAfter)>[] tasks = new Task<(bool, TimeSpan)>[parallelContention];
+        using var gate = new ManualResetEventSlim();
+        var tasks = new Task<(bool PermitExecution, TimeSpan RetryAfter)>[parallelContention];
         for (int i = 0; i < parallelContention; i++)
         {
             tasks[i] = Task.Run(() =>
@@ -294,13 +296,13 @@ public abstract class RateLimitPolicySpecsBase : RateLimitSpecsBase
 
         // Act - release gate.
         gate.Set();
-#pragma warning disable S6603
-        RateLimitSpecsBase.Within(TimeSpan.FromSeconds(10 /* high to allow for slow-running on time-slicing CI servers */), () => tasks.All(t => t.IsCompleted).Should().BeTrue());
-#pragma warning restore S6603
+        Within(
+            TimeSpan.FromSeconds(10 /* high to allow for slow-running on time-slicing CI servers */),
+            () => Assert.All(tasks, (t) => Assert.True(t.IsCompleted)));
 
         // Assert - one should have permitted execution, n-1 not.
         var results = tasks.Select(t => t.Result).ToList();
-        results.Count(r => r.permitExecution).Should().Be(1);
-        results.Count(r => !r.permitExecution).Should().Be(parallelContention - 1);
+        results.Count(r => r.PermitExecution).Should().Be(1);
+        results.Count(r => !r.PermitExecution).Should().Be(parallelContention - 1);
     }
 }

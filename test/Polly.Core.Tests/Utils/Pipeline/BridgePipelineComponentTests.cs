@@ -7,25 +7,24 @@ namespace Polly.Core.Tests.Utils.Pipeline;
 public class BridgePipelineComponentTests
 {
     [Fact]
-    public void Ctor_Ok()
-    {
+    public void Ctor_Ok() =>
         new Strategy<string>(args => { }).Should().NotBeNull();
-    }
 
     [Fact]
     public void Execute_NonGeneric_Ok()
     {
+        var cancellationToken = CancellationToken.None;
         var values = new List<object?>();
 
         var pipeline = new ResiliencePipeline(PipelineComponentFactory.FromStrategy(new Strategy<object>(outcome =>
         {
             values.Add(outcome.Result);
-        })), DisposeBehavior.Allow);
+        })), DisposeBehavior.Allow, null);
 
-        pipeline.Execute(args => "dummy");
-        pipeline.Execute(args => 0);
-        pipeline.Execute<object?>(args => null);
-        pipeline.Execute(args => true);
+        pipeline.Execute(args => "dummy", cancellationToken);
+        pipeline.Execute(args => 0, cancellationToken);
+        pipeline.Execute<object?>(args => null, cancellationToken);
+        pipeline.Execute(args => true, cancellationToken);
 
         values[0].Should().Be("dummy");
         values[1].Should().Be(0);
@@ -41,7 +40,7 @@ public class BridgePipelineComponentTests
         var pipeline = new ResiliencePipeline(PipelineComponentFactory.FromStrategy(new Strategy<string>(outcome =>
         {
             values.Add(outcome.Result);
-        })), DisposeBehavior.Allow);
+        })), DisposeBehavior.Allow, null);
 
         pipeline.Execute(args => "dummy");
 
@@ -58,7 +57,7 @@ public class BridgePipelineComponentTests
         {
             outcome.Result.Should().Be(-1);
             called = true;
-        })), DisposeBehavior.Allow);
+        })), DisposeBehavior.Allow, null);
 
         pipeline.Execute(() => -1);
 
@@ -91,21 +90,15 @@ public class BridgePipelineComponentTests
     }
 #pragma warning restore S1944 // Invalid casts should be avoided
 
-    private static async Task Dispose(PipelineComponent component)
-    {
+    private static async Task Dispose(PipelineComponent component) =>
         await component.DisposeAsync();
-    }
 
-    private class Strategy<T> : ResilienceStrategy<T>
+    private class Strategy<T>(Action<Outcome<T>> onOutcome) : ResilienceStrategy<T>
     {
-        private readonly Action<Outcome<T>> _onOutcome;
-
-        public Strategy(Action<Outcome<T>> onOutcome) => _onOutcome = onOutcome;
-
         protected internal override async ValueTask<Outcome<T>> ExecuteCore<TState>(Func<ResilienceContext, TState, ValueTask<Outcome<T>>> callback, ResilienceContext context, TState state)
         {
             var outcome = await callback(context, state);
-            _onOutcome(outcome);
+            onOutcome(outcome);
             return outcome;
         }
     }

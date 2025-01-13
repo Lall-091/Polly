@@ -1,6 +1,6 @@
 ﻿namespace Polly.Specs.Bulkhead;
 
-[Collection(Helpers.Constants.ParallelThreadDependentTestCollection)]
+[Collection(Constants.ParallelThreadDependentTestCollection)]
 public class BulkheadSpecs : BulkheadSpecsBase
 {
     public BulkheadSpecs(ITestOutputHelper testOutputHelper)
@@ -11,7 +11,45 @@ public class BulkheadSpecs : BulkheadSpecsBase
     #region Configuration
 
     [Fact]
-    public void Should_throw_when_maxparallelization_less_or_equal_to_zero()
+    public void Should_throw_when_action_is_null()
+    {
+        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        Func<Context, CancellationToken, EmptyStruct> action = null!;
+        var maxParallelization = 1;
+        var maxQueueingActions = 1;
+        Action<Context> onBulkheadRejected = _ => { };
+
+        var instance = Activator.CreateInstance(
+            typeof(BulkheadPolicy),
+            flags,
+            null,
+            [maxParallelization, maxQueueingActions, onBulkheadRejected],
+            null)!;
+        var instanceType = instance.GetType();
+        var methods = instanceType.GetMethods(flags);
+        var methodInfo = methods.First(method => method is { Name: "Implementation", ReturnType.Name: "TResult" });
+        var generic = methodInfo.MakeGenericMethod(typeof(EmptyStruct));
+
+        var func = () => generic.Invoke(instance, [action, new Context(), CancellationToken]);
+
+        var exceptionAssertions = func.Should().Throw<TargetInvocationException>();
+        exceptionAssertions.And.Message.Should().Be("Exception has been thrown by the target of an invocation.");
+        exceptionAssertions.And.InnerException.Should().BeOfType<ArgumentNullException>()
+            .Which.ParamName.Should().Be("action");
+    }
+
+    [Fact]
+    public void Should_throw_when_maxParallelization_less_or_equal_to_zero_and_no_maxQueuingActions()
+    {
+        Action policy = () => Policy
+            .Bulkhead(0);
+
+        policy.Should().Throw<ArgumentOutOfRangeException>().And
+            .ParamName.Should().Be("maxParallelization");
+    }
+
+    [Fact]
+    public void Should_throw_when_maxParallelization_less_or_equal_to_zero()
     {
         Action policy = () => Policy
             .Bulkhead(0, 1);
@@ -21,7 +59,7 @@ public class BulkheadSpecs : BulkheadSpecsBase
     }
 
     [Fact]
-    public void Should_throw_when_maxqueuedactions_less_than_zero()
+    public void Should_throw_when_maxQueuedActions_less_than_zero()
     {
         Action policy = () => Policy
             .Bulkhead(1, -1);
@@ -56,15 +94,19 @@ public class BulkheadSpecs : BulkheadSpecsBase
         using BulkheadPolicy bulkhead = Policy.Bulkhead(1, onRejected);
         TaskCompletionSource<object> tcs = new TaskCompletionSource<object>();
 
-        Task.Run(() => { bulkhead.Execute(() => { tcs.Task.Wait(); }); });
+        Task.Run(() => { bulkhead.Execute(() => { tcs.Task.Wait(); }); }, CancellationToken);
 
         // Time for the other thread to kick up and take the bulkhead.
-        Within(CohesionTimeLimit, () => BulkheadSpecsBase.Expect(0, () => bulkhead.BulkheadAvailableCount, nameof(bulkhead.BulkheadAvailableCount)));
+        Within(CohesionTimeLimit, () => Expect(0, () => bulkhead.BulkheadAvailableCount, nameof(bulkhead.BulkheadAvailableCount)));
 
         bulkhead.Invoking(b => b.Execute(_ => { }, contextPassedToExecute)).Should()
             .Throw<BulkheadRejectedException>();
 
+#if NET
+        tcs.SetCanceled(CancellationToken);
+#else
         tcs.SetCanceled();
+#endif
 
         contextPassedToOnRejected!.Should().NotBeNull();
         contextPassedToOnRejected!.OperationKey.Should().Be(operationKey);

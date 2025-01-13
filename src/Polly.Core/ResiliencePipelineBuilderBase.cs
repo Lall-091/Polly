@@ -1,5 +1,4 @@
 using System.ComponentModel;
-
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
 using Polly.Telemetry;
@@ -15,9 +14,11 @@ namespace Polly;
 /// The resulting instance of <see cref="ResiliencePipeline"/> executes the strategies in the same order they were added to the builder.
 /// The order of the strategies is important.
 /// </remarks>
+#pragma warning disable S1694 // An abstract class should have both abstract and concrete methods
 public abstract class ResiliencePipelineBuilderBase
+#pragma warning restore S1694 // An abstract class should have both abstract and concrete methods
 {
-    private readonly List<Entry> _entries = new();
+    private readonly List<Entry> _entries = [];
     private bool _used;
 
     private protected ResiliencePipelineBuilderBase()
@@ -55,19 +56,27 @@ public abstract class ResiliencePipelineBuilderBase
     public string? InstanceName { get; set; }
 
     /// <summary>
-    /// Gets or sets a <see cref="TimeProvider"/> that is used by strategies that work with time.
+    /// Gets or sets the <see cref="Polly.ResilienceContextPool"/> associated with the builder.
     /// </summary>
     /// <remarks>
-    /// This property is internal until we switch to official System.TimeProvider.
+    /// A custom pool can be used to configure custom behavior for  creation.
+    /// This can include setting a default <c>continueOnCapturedContext</c> parameter or custom operation key resolution.
     /// </remarks>
     /// <value>
-    /// The default value is <see cref="TimeProvider.System"/>.
+    /// If the default value of <see langword="null"/> is used, <see cref="ResilienceContextPool.Shared"/> will be used.
     /// </value>
-    [Required]
-    internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+    public ResilienceContextPool? ContextPool { get; set; }
 
     /// <summary>
-    /// Gets or sets the <see cref="TelemetryListener"/> that is used by Polly to report resilience events.
+    /// Gets or sets a <see cref="TimeProvider"/> that is used by strategies that work with time.
+    /// </summary>
+    /// <value>
+    /// The default value is <see langword="null"/> and unless set, <see cref="TimeProvider.System"/> will be used.
+    /// </value>
+    public TimeProvider? TimeProvider { get; set; }
+
+    /// <summary>
+    /// Gets or sets the <see cref="Polly.Telemetry.TelemetryListener"/> that is used by Polly to report resilience events.
     /// </summary>
     /// <remarks>
     /// This property is used by the telemetry infrastructure and should not be used directly by user code.
@@ -77,6 +86,8 @@ public abstract class ResiliencePipelineBuilderBase
     /// </value>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public TelemetryListener? TelemetryListener { get; set; }
+
+    internal TimeProvider TimeProviderInternal => TimeProvider ?? TimeProvider.System;
 
     /// <summary>
     /// Gets the validator that is used for the validation.
@@ -119,13 +130,13 @@ public abstract class ResiliencePipelineBuilderBase
 
         var source = new ResilienceTelemetrySource(Name, InstanceName, null);
 
-        return PipelineComponentFactory.CreateComposite(components, new ResilienceStrategyTelemetry(source, TelemetryListener), TimeProvider);
+        return PipelineComponentFactory.CreateComposite(components, new ResilienceStrategyTelemetry(source, TelemetryListener), TimeProviderInternal);
     }
 
     private PipelineComponent CreateComponent(Entry entry)
     {
         var source = new ResilienceTelemetrySource(Name, InstanceName, entry.Options.Name);
-        var context = new StrategyBuilderContext(new ResilienceStrategyTelemetry(source, TelemetryListener), TimeProvider);
+        var context = new StrategyBuilderContext(new ResilienceStrategyTelemetry(source, TelemetryListener), TimeProviderInternal);
 
         var strategy = entry.Factory(context);
         strategy.Options = entry.Options;

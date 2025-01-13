@@ -8,6 +8,43 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
     #region Configuration tests
 
     [Fact]
+    public void Should_throw_when_action_is_null()
+    {
+        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        Func<Context, CancellationToken, Task<EmptyStruct>> action = null!;
+        PolicyBuilder<EmptyStruct> policyBuilder = new PolicyBuilder<EmptyStruct>(exception => exception);
+
+        var exceptionsAllowedBeforeBreaking = 1;
+        var durationOfBreak = TimeSpan.Zero;
+        Action<DelegateResult<EmptyStruct>, CircuitState, TimeSpan, Context> onBreak = null!;
+        Action<Context> onReset = null!;
+        Action onHalfOpen = null!;
+        ICircuitController<EmptyStruct> breakerController = new ConsecutiveCountCircuitController<EmptyStruct>(
+            exceptionsAllowedBeforeBreaking,
+            durationOfBreak,
+            onBreak,
+            onReset,
+            onHalfOpen);
+
+        var instance = Activator.CreateInstance(
+            typeof(AsyncCircuitBreakerPolicy<EmptyStruct>),
+            flags,
+            null,
+            [policyBuilder, breakerController],
+            null)!;
+        var instanceType = instance.GetType();
+        var methods = instanceType.GetMethods(flags);
+        var methodInfo = methods.First(method => method is { Name: "ImplementationAsync", ReturnType.Name: "Task`1" });
+
+        var func = () => methodInfo.Invoke(instance, [action, new Context(), CancellationToken.None, false]);
+
+        var exceptionAssertions = func.Should().Throw<TargetInvocationException>();
+        exceptionAssertions.And.Message.Should().Be("Exception has been thrown by the target of an invocation.");
+        exceptionAssertions.And.InnerException.Should().BeOfType<ArgumentNullException>()
+            .Which.ParamName.Should().Be("action");
+    }
+
+    [Fact]
     public async Task Should_be_able_to_handle_a_duration_of_timespan_maxvalue()
     {
         var breaker = Policy
@@ -385,11 +422,11 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should permit first execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should reject a second execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
     }
 
@@ -415,11 +452,11 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should permit first execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should reject a second execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().Throw<BrokenCircuitException>();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // Allow another time window to pass (breaker should still be HalfOpen).
@@ -427,7 +464,7 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // OnActionPreExecute() should now permit another trial execution.
-        breaker._breakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
+        breaker.BreakerController.Invoking(c => c.OnActionPreExecute()).Should().NotThrow();
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
     }
 
@@ -518,11 +555,21 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         // Graceful cleanup: allow executions time to end naturally; signal them to end if not; timeout any deadlocks; expose any execution faults. This validates the test ran as expected (and background delegates are complete) before we assert on outcomes.
         permitFirstExecutionEnd.WaitOne(testTimeoutToExposeDeadlocks);
         permitFirstExecutionEnd.Set();
-        Task.WaitAll(new[] { firstExecution, secondExecution }, testTimeoutToExposeDeadlocks).Should().BeTrue();
+
+#pragma warning disable xUnit1031
+        Task.WaitAll([firstExecution, secondExecution], testTimeoutToExposeDeadlocks).Should().BeTrue();
+#pragma warning restore xUnit1031
+
         if (firstExecution.IsFaulted)
+        {
             throw firstExecution!.Exception!;
+        }
+
         if (secondExecution.IsFaulted)
+        {
             throw secondExecution!.Exception!;
+        }
+
         firstExecution.Status.Should().Be(TaskStatus.RanToCompletion);
         secondExecution.Status.Should().Be(TaskStatus.RanToCompletion);
 
@@ -625,11 +672,21 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         // Graceful cleanup: allow executions time to end naturally; signal them to end if not; timeout any deadlocks; expose any execution faults. This validates the test ran as expected (and background delegates are complete) before we assert on outcomes.
         permitFirstExecutionEnd.WaitOne(testTimeoutToExposeDeadlocks);
         permitFirstExecutionEnd.Set();
-        Task.WaitAll(new[] { firstExecution, secondExecution }, testTimeoutToExposeDeadlocks).Should().BeTrue();
+
+#pragma warning disable xUnit1031
+        Task.WaitAll([firstExecution, secondExecution], testTimeoutToExposeDeadlocks).Should().BeTrue();
+#pragma warning restore xUnit1031
+
         if (firstExecution.IsFaulted)
+        {
             throw firstExecution!.Exception!;
+        }
+
         if (secondExecution.IsFaulted)
+        {
             throw secondExecution!.Exception!;
+        }
+
         firstExecution.Status.Should().Be(TaskStatus.RanToCompletion);
         secondExecution.Status.Should().Be(TaskStatus.RanToCompletion);
 
@@ -890,10 +947,20 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         // Permit the second (long-running) execution to hit the open circuit with its failure.
         permitLongRunningExecutionToReturnItsFailure.Set();
 
+#pragma warning disable xUnit1031
         // Graceful cleanup: allow executions time to end naturally; timeout if any deadlocks; expose any execution faults.  This validates the test ran as expected (and background delegates are complete) before we assert on outcomes.
+#if NET
+        longRunningExecution.Wait(testTimeoutToExposeDeadlocks, CancellationToken.None).Should().BeTrue();
+#else
         longRunningExecution.Wait(testTimeoutToExposeDeadlocks).Should().BeTrue();
+#endif
+#pragma warning restore xUnit1031
+
         if (longRunningExecution.IsFaulted)
+        {
             throw longRunningExecution!.Exception!;
+        }
+
         longRunningExecution.Status.Should().Be(TaskStatus.RanToCompletion);
 
         // onBreak() should still only have been called once.
@@ -1190,7 +1257,7 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         (await breaker.RaiseResultSequenceAsync(ResultPrimitive.Fault))
             .Should().Be(ResultPrimitive.Fault);
 
-        (await breaker.RaiseResultSequenceAsync(new { key1 = "value1", key2 = "value2" }.AsDictionary(),
+        (await breaker.RaiseResultSequenceAsync(CreateDictionary("key1", "value1", "key2", "value2"),
             ResultPrimitive.Fault))
             .Should().Be(ResultPrimitive.Fault);
 
@@ -1228,7 +1295,7 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         breaker.CircuitState.Should().Be(CircuitState.HalfOpen);
 
         // first call after duration should invoke onReset, with context
-        await breaker.ExecuteAsync(_ => Task.FromResult(ResultPrimitive.Good), new { key1 = "value1", key2 = "value2" }.AsDictionary());
+        await breaker.ExecuteAsync(_ => Task.FromResult(ResultPrimitive.Good), CreateDictionary("key1", "value1", "key2", "value2"));
 
         contextData.Should()
             .ContainKeys("key1", "key2").And
@@ -1238,7 +1305,7 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
     [Fact]
     public async Task Context_should_be_empty_if_execute_not_called_with_any_context_data()
     {
-        IDictionary<string, object> contextData = new { key1 = "value1", key2 = "value2" }.AsDictionary();
+        IDictionary<string, object> contextData = CreateDictionary("key1", "value1", "key2", "value2");
 
         Action<DelegateResult<ResultPrimitive>, TimeSpan, Context> onBreak = (_, _, context) => { contextData = context; };
         Action<Context> onReset = _ => { };
@@ -1279,7 +1346,7 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             .Should().Be(ResultPrimitive.Fault);
 
         // 2 exception or fault raised, circuit is now open
-        (await breaker.RaiseResultSequenceAsync(new { key = "original_value" }.AsDictionary(), ResultPrimitive.Fault))
+        (await breaker.RaiseResultSequenceAsync(CreateDictionary("key", "original_value"), ResultPrimitive.Fault))
             .Should().Be(ResultPrimitive.Fault);
         breaker.CircuitState.Should().Be(CircuitState.Open);
         contextValue.Should().Be("original_value");
@@ -1292,7 +1359,7 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
         // but not yet reset
 
         // first call after duration is successful, so circuit should reset
-        await breaker.ExecuteAsync(_ => Task.FromResult(ResultPrimitive.Good), new { key = "new_value" }.AsDictionary());
+        await breaker.ExecuteAsync(_ => Task.FromResult(ResultPrimitive.Good), CreateDictionary("key", "new_value"));
         breaker.CircuitState.Should().Be(CircuitState.Closed);
         contextValue.Should().Be("new_value");
     }
@@ -1385,9 +1452,6 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             .HandleResult(ResultPrimitive.Fault)
                         .CircuitBreakerAsync(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1396,9 +1460,13 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             AttemptDuringWhichToCancel = null,
         };
 
-        (await breaker.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
-            ResultPrimitive.Good))
-            .Should().Be(ResultPrimitive.Good);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            (await breaker.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
+                ResultPrimitive.Good))
+                .Should().Be(ResultPrimitive.Good);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1411,9 +1479,6 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             .HandleResult(ResultPrimitive.Fault)
             .CircuitBreakerAsync(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1422,14 +1487,18 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             AttemptDuringWhichToCancel = null, // Cancellation token cancelled manually below - before any scenario execution.
         };
 
-        cancellationTokenSource.Cancel();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            cancellationTokenSource.Cancel();
 
-        var ex = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
-           ResultPrimitive.Fault,
-           ResultPrimitive.Fault,
-           ResultPrimitive.Good))
-        .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            var ex = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
+               ResultPrimitive.Fault,
+               ResultPrimitive.Fault,
+               ResultPrimitive.Good))
+            .Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(0);
     }
@@ -1442,9 +1511,6 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             .HandleResult(ResultPrimitive.Fault)
             .CircuitBreakerAsync(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1454,11 +1520,16 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        var ex = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
-               ResultPrimitive.Good,
-               ResultPrimitive.Good))
-            .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
+                   ResultPrimitive.Good,
+                   ResultPrimitive.Good))
+                .Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1471,9 +1542,6 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
                         .HandleResult(ResultPrimitive.Fault)
                         .CircuitBreakerAsync(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1483,11 +1551,16 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        var ex = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
-               ResultPrimitive.Fault,
-               ResultPrimitive.Good))
-            .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
+                   ResultPrimitive.Fault,
+                   ResultPrimitive.Good))
+                .Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1500,9 +1573,6 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
                         .HandleResult(ResultPrimitive.Fault)
                         .CircuitBreakerAsync(2, durationOfBreak);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -1512,8 +1582,13 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        (await breaker.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute, ResultPrimitive.Fault))
-                        .Should().Be(ResultPrimitive.Fault);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            (await breaker.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute, ResultPrimitive.Fault))
+                            .Should().Be(ResultPrimitive.Fault);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -1534,13 +1609,8 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
 
         // Circuit is now broken.
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
-
-        cancellationTokenSource.Cancel();
 
         Scenario scenario = new Scenario
         {
@@ -1548,11 +1618,17 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        var ex2 = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
-               ResultPrimitive.Fault,
-               ResultPrimitive.Good))
-            .Should().ThrowAsync<OperationCanceledException>();
-        ex2.And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            cancellationTokenSource.Cancel();
+
+            var ex2 = await breaker.Awaiting(x => x.RaiseResultSequenceAndOrCancellationAsync(scenario, cancellationTokenSource, onExecute,
+                   ResultPrimitive.Fault,
+                   ResultPrimitive.Good))
+                .Should().ThrowAsync<OperationCanceledException>();
+            ex2.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(0);
     }
@@ -1567,25 +1643,26 @@ public class CircuitBreakerTResultAsyncSpecs : IDisposable
                         .HandleResult(ResultPrimitive.Fault)
                         .CircuitBreakerAsync(2, durationOfBreak);
 
-        CancellationTokenSource policyCancellationTokenSource = new CancellationTokenSource();
-        CancellationToken policyCancellationToken = policyCancellationTokenSource.Token;
-
-        CancellationTokenSource implicitlyCapturedActionCancellationTokenSource = new CancellationTokenSource();
-        CancellationToken implicitlyCapturedActionCancellationToken = implicitlyCapturedActionCancellationTokenSource.Token;
-
-        implicitlyCapturedActionCancellationTokenSource.Cancel();
-
         int attemptsInvoked = 0;
 
-        var ex = await breaker.Awaiting(x => x.ExecuteAsync(async _ =>
+        using (var policyCancellationTokenSource = new CancellationTokenSource())
+        using (var implicitlyCapturedActionCancellationTokenSource = new CancellationTokenSource())
         {
-            attemptsInvoked++;
-            await TaskHelper.EmptyTask;
-            implicitlyCapturedActionCancellationToken.ThrowIfCancellationRequested();
-            return ResultPrimitive.Good;
-        }, policyCancellationToken))
-            .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(implicitlyCapturedActionCancellationToken);
+            CancellationToken policyCancellationToken = policyCancellationTokenSource.Token;
+            CancellationToken implicitlyCapturedActionCancellationToken = implicitlyCapturedActionCancellationTokenSource.Token;
+
+            implicitlyCapturedActionCancellationTokenSource.Cancel();
+
+            var ex = await breaker.Awaiting(x => x.ExecuteAsync(async _ =>
+            {
+                attemptsInvoked++;
+                await TaskHelper.EmptyTask;
+                implicitlyCapturedActionCancellationToken.ThrowIfCancellationRequested();
+                return ResultPrimitive.Good;
+            }, policyCancellationToken))
+                .Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(implicitlyCapturedActionCancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }

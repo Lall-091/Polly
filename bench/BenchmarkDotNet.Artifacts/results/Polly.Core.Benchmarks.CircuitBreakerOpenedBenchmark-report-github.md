@@ -1,16 +1,16 @@
 ```
 
-BenchmarkDotNet v0.13.7, Windows 11 (10.0.22621.2134/22H2/2022Update/SunValley2) (Hyper-V)
-Intel Xeon Platinum 8370C CPU 2.80GHz, 1 CPU, 16 logical and 8 physical cores
-.NET SDK 7.0.400
-  [Host] : .NET 7.0.10 (7.0.1023.36312), X64 RyuJIT AVX2
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.22631.4602/23H2/2023Update/SunValley3)
+12th Gen Intel Core i7-1280P, 1 CPU, 20 logical and 14 physical cores
+.NET SDK 9.0.101
+  [Host] : .NET 9.0.0 (9.0.24.52809), X64 RyuJIT AVX2
 
 Job=MediumRun  Toolchain=InProcessEmitToolchain  IterationCount=15  
 LaunchCount=2  WarmupCount=10  
 
 ```
-|                    Method |        Mean |     Error |    StdDev | Ratio | RatioSD |   Gen0 | Allocated | Alloc Ratio |
+| Method                    | Mean        | Error     | StdDev    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
 |-------------------------- |------------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
-| ExecuteAsync_Exception_V7 | 30,519.7 ns | 621.36 ns | 891.14 ns | 38.69 |    1.25 | 0.0916 |    2888 B |       15.04 |
-| ExecuteAsync_Exception_V8 | 20,804.6 ns | 144.38 ns | 192.74 ns | 26.34 |    0.24 | 0.0610 |    1816 B |        9.46 |
-|   ExecuteAsync_Outcome_V8 |    789.8 ns |   3.93 ns |   5.37 ns |  1.00 |    0.00 | 0.0076 |     192 B |        1.00 |
+| ExecuteAsync_Exception_V7 | 14,295.0 ns | 418.44 ns | 600.11 ns | 27.37 |    1.33 | 0.1526 |    2056 B |       10.28 |
+| ExecuteAsync_Exception_V8 |  9,178.8 ns | 114.83 ns | 171.88 ns | 17.57 |    0.55 | 0.0916 |    1312 B |        6.56 |
+| ExecuteAsync_Outcome_V8   |    522.6 ns |   9.15 ns |  13.70 ns |  1.00 |    0.04 | 0.0153 |     200 B |        1.00 |

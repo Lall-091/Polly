@@ -34,6 +34,78 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
     }
 
     [Fact]
+    public void Should_throw_when_sleep_duration_provider_int_timespan_is_null()
+    {
+        Action policy = () => Policy
+                                .Handle<Exception>()
+                                .WaitAndRetryForeverAsync(default(Func<int, TimeSpan>));
+
+        policy.Should().Throw<ArgumentNullException>().And
+              .ParamName.Should().Be("sleepDurationProvider");
+    }
+
+    [Fact]
+    public void Should_throw_when_sleep_duration_provider_int_timespan_is_null_with_onretry()
+    {
+        Action<Exception, int, TimeSpan> onRetry = (_, _, _) => { };
+
+        Action policy = () => Policy
+                                .Handle<Exception>()
+                                .WaitAndRetryForeverAsync(default, onRetry);
+
+        policy.Should().Throw<ArgumentNullException>().And
+              .ParamName.Should().Be("sleepDurationProvider");
+    }
+
+    [Fact]
+    public void Should_throw_when_sleep_duration_provider_int_context_timespan_is_null()
+    {
+        Action policy = () => Policy
+                               .Handle<Exception>()
+                               .WaitAndRetryForeverAsync(default(Func<int, Context, TimeSpan>));
+
+        policy.Should().Throw<ArgumentNullException>().And
+              .ParamName.Should().Be("sleepDurationProvider");
+    }
+
+    [Fact]
+    public void Should_throw_when_onretry_exception_int_timespan_is_null_with_sleep_duration_provider()
+    {
+        Func<int, TimeSpan> provider = _ => TimeSpan.Zero;
+
+        Action policy = () => Policy
+                                .Handle<Exception>()
+                                .WaitAndRetryForeverAsync(provider, default(Action<Exception, int, TimeSpan>));
+
+        policy.Should().Throw<ArgumentNullException>().And
+              .ParamName.Should().Be("onRetry");
+    }
+
+    [Fact]
+    public void Should_throw_when_sleep_duration_provider_int_context_timespan_is_null_with_retry()
+    {
+        Action policy = () => Policy
+                               .Handle<Exception>()
+                               .WaitAndRetryForeverAsync(default, default(Action<Exception, int, TimeSpan, Context>));
+
+        policy.Should().Throw<ArgumentNullException>().And
+              .ParamName.Should().Be("sleepDurationProvider");
+    }
+
+    [Fact]
+    public void Should_throw_when_onretry_exception_int_timespan_context_is_null_with_sleep_duration_provider()
+    {
+        Func<int, Context, TimeSpan> provider = (_, _) => 1.Seconds();
+
+        Action policy = () => Policy
+                                .Handle<Exception>()
+                                .WaitAndRetryForeverAsync(provider, default(Action<Exception, int, TimeSpan, Context>));
+
+        policy.Should().Throw<ArgumentNullException>().And
+              .ParamName.Should().Be("onRetry");
+    }
+
+    [Fact]
     public void Should_throw_when_onretry_action_is_null_without_context()
     {
         Action<Exception, TimeSpan> nullOnRetry = null!;
@@ -251,12 +323,12 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             (_, _, context) => contextValue = context["key"].ToString());
 
         policy.RaiseExceptionAsync<DivideByZeroException>(
-            new { key = "original_value" }.AsDictionary());
+            CreateDictionary("key", "original_value"));
 
         contextValue.Should().Be("original_value");
 
         policy.RaiseExceptionAsync<DivideByZeroException>(
-            new { key = "new_value" }.AsDictionary());
+            CreateDictionary("key", "new_value"));
 
         contextValue.Should().Be("new_value");
     }
@@ -313,7 +385,10 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             await policy.ExecuteAsync(() =>
             {
                 if (enumerator.MoveNext())
+                {
                     throw enumerator.Current.Key;
+                }
+
                 return TaskHelper.EmptyTask;
             });
         }
@@ -347,7 +422,7 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
                 throw new DivideByZeroException();
             }
         },
-            new { RetryAfter = defaultRetryAfter }.AsDictionary(), // Can also set an initial value for RetryAfter, in the Context passed into the call.
+            CreateDictionary("RetryAfter", defaultRetryAfter), // Can also set an initial value for RetryAfter, in the Context passed into the call.
             CancellationToken.None);
 
         actualRetryDuration.Should().Be(expectedRetryDuration);
@@ -357,7 +432,8 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
     public async Task Should_wait_asynchronously_for_async_onretry_delegate()
     {
         // This test relates to https://github.com/App-vNext/Polly/issues/107.
-        // An async (...) => { ... } anonymous delegate with no return type may compile to either an async void or an async Task method; which assign to an Action<...> or Func<..., Task> respectively.  However, if it compiles to async void (assigning tp Action<...>), then the delegate, when run, will return at the first await, and execution continues without waiting for the Action to complete, as described by Stephen Toub: http://blogs.msdn.com/b/pfxteam/archive/2012/02/08/10265476.aspx
+        // An async (...) => { ... } anonymous delegate with no return type may compile to either an async void or an async Task method; which assign to an Action<...> or Func<..., Task> respectively.
+        // However, if it compiles to async void (assigning tp Action<...>), then the delegate, when run, will return at the first await, and execution continues without waiting for the Action to complete, as described by Stephen Toub: https://devblogs.microsoft.com/pfxteam/potential-pitfalls-to-avoid-when-passing-around-async-lambdas/
         // If Polly were to declare only an Action<...> delegate for onRetry - but users declared async () => { } onRetry delegates - the compiler would happily assign them to the Action<...>, but the next 'try' would/could occur before onRetry execution had completed.
         // This test ensures the relevant retry policy does have a Func<..., Task> form for onRetry, and that it is awaited before the next try commences.
 
@@ -404,8 +480,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -415,8 +489,11 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             AttemptDuringWhichToCancel = null,
         };
 
-        await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
             .Should().NotThrowAsync();
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -430,9 +507,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -442,11 +516,15 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             AttemptDuringWhichToCancel = null, // Cancellation token cancelled manually below - before any scenario execution.
         };
 
-        cancellationTokenSource.Cancel();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            cancellationTokenSource.Cancel();
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(0);
     }
@@ -460,9 +538,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -473,9 +548,14 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
             .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -489,9 +569,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -502,9 +579,14 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
             .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -518,9 +600,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -531,9 +610,14 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
             .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -547,9 +631,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -560,9 +641,14 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
             .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(2);
     }
@@ -576,9 +662,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -589,9 +672,14 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
             .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(2);
     }
@@ -600,17 +688,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
     public async Task Should_report_cancellation_after_faulting_action_execution_and_cancel_further_retries_if_onRetry_invokes_cancellation()
     {
         Func<int, TimeSpan> provider = _ => TimeSpan.Zero;
-
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
-        var policy = Policy
-            .Handle<DivideByZeroException>()
-            .WaitAndRetryForeverAsync(provider,
-            (_, _) =>
-            {
-                cancellationTokenSource.Cancel();
-            });
 
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
@@ -622,9 +699,22 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = false
         };
 
-        var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
-            .Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            var policy = Policy
+                .Handle<DivideByZeroException>()
+                .WaitAndRetryForeverAsync(provider,
+                (_, _) =>
+                {
+                    cancellationTokenSource.Cancel();
+                });
+
+            var ex = await policy.Awaiting(x => x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException>(scenario, cancellationTokenSource, onExecute))
+                .Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         attemptsInvoked.Should().Be(1);
     }
@@ -638,8 +728,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
             .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -651,8 +739,11 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             AttemptDuringWhichToCancel = null,
         };
 
-        Func<AsyncRetryPolicy, Task> action = async x => result = await x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true);
-        await policy.Awaiting(action).Should().NotThrowAsync();
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            Func<AsyncRetryPolicy, Task> action = async x => result = await x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true);
+            await policy.Awaiting(action).Should().NotThrowAsync();
+        }
 
         result.Should().BeTrue();
 
@@ -668,9 +759,6 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             .Handle<DivideByZeroException>()
            .WaitAndRetryForeverAsync(provider);
 
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
-
         int attemptsInvoked = 0;
         Action onExecute = () => attemptsInvoked++;
 
@@ -683,9 +771,14 @@ public class WaitAndRetryForeverAsyncSpecs : IDisposable
             ActionObservesCancellation = true
         };
 
-        Func<AsyncRetryPolicy, Task> action = async x => result = await x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true);
-        var ex = await policy.Awaiting(action).Should().ThrowAsync<OperationCanceledException>();
-        ex.And.CancellationToken.Should().Be(cancellationToken);
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            Func<AsyncRetryPolicy, Task> action = async x => result = await x.RaiseExceptionAndOrCancellationAsync<DivideByZeroException, bool>(scenario, cancellationTokenSource, onExecute, true);
+            var ex = await policy.Awaiting(action).Should().ThrowAsync<OperationCanceledException>();
+            ex.And.CancellationToken.Should().Be(cancellationToken);
+        }
 
         result.Should().Be(null);
 

@@ -3,29 +3,24 @@ namespace Polly.Core.Tests;
 public class ResilienceContextPoolTests
 {
     [Fact]
-    public void Shared_NotNull()
-    {
+    public void Shared_NotNull() =>
         ResilienceContextPool.Shared.Should().NotBeNull();
-    }
 
     [Fact]
-    public void Shared_SameInstance()
-    {
+    public void Shared_SameInstance() =>
         ResilienceContextPool.Shared.Should().BeSameAs(ResilienceContextPool.Shared);
-    }
 
     [Fact]
-    public void Get_EnsureNotNull()
-    {
+    public void Get_EnsureNotNull() =>
         ResilienceContextPool.Shared.Get().Should().NotBeNull();
-    }
 
     [Fact]
     public void Get_EnsureDefaults()
     {
-        var context = ResilienceContextPool.Shared.Get();
+        var cancellationToken = CancellationToken.None;
+        var context = ResilienceContextPool.Shared.Get(cancellationToken);
 
-        AssertDefaults(context);
+        AssertDefaults(context, cancellationToken);
     }
 
     [Fact]
@@ -82,49 +77,43 @@ public class ResilienceContextPoolTests
     }
 
     [Fact]
-    public async Task Get_EnsurePooled()
-    {
+    public async Task Get_EnsurePooled() =>
         await TestUtilities.AssertWithTimeoutAsync(() =>
         {
-            var context = ResilienceContextPool.Shared.Get();
+            var context = ResilienceContextPool.Shared.Get(default(CancellationToken));
 
             ResilienceContextPool.Shared.Return(context);
 
-            ResilienceContextPool.Shared.Get().Should().BeSameAs(context);
+            ResilienceContextPool.Shared.Get(default(CancellationToken)).Should().BeSameAs(context);
         });
-    }
 
     [Fact]
-    public void Return_Null_Throws()
-    {
+    public void Return_Null_Throws() =>
         Assert.Throws<ArgumentNullException>(() => ResilienceContextPool.Shared.Return(null!));
-    }
 
     [Fact]
-    public async Task Return_EnsureDefaults()
-    {
+    public async Task Return_EnsureDefaults() =>
         await TestUtilities.AssertWithTimeoutAsync(() =>
         {
             using var cts = new CancellationTokenSource();
-            var context = ResilienceContextPool.Shared.Get();
+            var context = ResilienceContextPool.Shared.Get(CancellationToken.None);
             context.CancellationToken = cts.Token;
             context.Initialize<bool>(true);
             context.CancellationToken.Should().Be(cts.Token);
             context.Properties.Set(new ResiliencePropertyKey<int>("abc"), 10);
             ResilienceContextPool.Shared.Return(context);
 
-            AssertDefaults(context);
+            AssertDefaults(context, CancellationToken.None);
         });
-    }
 
-    private static void AssertDefaults(ResilienceContext context)
+    private static void AssertDefaults(ResilienceContext context, CancellationToken expectedToken)
     {
         context.IsInitialized.Should().BeFalse();
         context.ContinueOnCapturedContext.Should().BeFalse();
         context.IsVoid.Should().BeFalse();
         context.ResultType.Name.Should().Be("UnknownResult");
         context.IsSynchronous.Should().BeFalse();
-        context.CancellationToken.Should().Be(CancellationToken.None);
+        context.CancellationToken.Should().Be(expectedToken);
         context.Properties.Options.Should().BeEmpty();
         context.OperationKey.Should().BeNull();
     }

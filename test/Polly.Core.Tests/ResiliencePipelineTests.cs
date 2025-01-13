@@ -4,11 +4,17 @@ using Polly.Utils.Pipeline;
 
 namespace Polly.Core.Tests;
 
-#pragma warning disable S3966 // Objects should not be disposed more than once
-
 public partial class ResiliencePipelineTests
 {
     public static readonly CancellationToken CancellationToken = new CancellationTokenSource().Token;
+
+#pragma warning disable IDE0028
+    public static TheoryData<ResilienceContextPool?> ResilienceContextPools = new()
+    {
+        null,
+        ResilienceContextPool.Shared,
+    };
+#pragma warning restore IDE0028
 
     [Fact]
     public async Task DisposeAsync_NullPipeline_OK()
@@ -32,7 +38,7 @@ public partial class ResiliencePipelineTests
     public async Task DisposeAsync_Reject_Throws()
     {
         var component = Substitute.For<PipelineComponent>();
-        var pipeline = new ResiliencePipeline(component, DisposeBehavior.Reject);
+        var pipeline = new ResiliencePipeline(component, DisposeBehavior.Reject, null);
 
         (await pipeline.Invoking(p => p.DisposeHelper.DisposeAsync().AsTask())
             .Should()
@@ -44,7 +50,7 @@ public partial class ResiliencePipelineTests
     public async Task DisposeAsync_Allowed_Disposed()
     {
         var component = Substitute.For<PipelineComponent>();
-        var pipeline = new ResiliencePipeline(component, DisposeBehavior.Allow);
+        var pipeline = new ResiliencePipeline(component, DisposeBehavior.Allow, null);
         await pipeline.DisposeHelper.DisposeAsync();
         await pipeline.DisposeHelper.DisposeAsync();
 
@@ -63,13 +69,35 @@ public partial class ResiliencePipelineTests
     [Fact]
     public async Task DebuggerProxy_Ok()
     {
-        await using var pipeline = (CompositeComponent)PipelineComponentFactory.CreateComposite(new[]
-        {
+        await using var pipeline = (CompositeComponent)PipelineComponentFactory.CreateComposite(
+        [
             Substitute.For<PipelineComponent>(),
             Substitute.For<PipelineComponent>(),
-        }, null!, null!);
+        ], null!, null!);
 
         new CompositeComponentDebuggerProxy(pipeline).Strategies.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Pool_IsSharedPool()
+    {
+        var component = Substitute.For<PipelineComponent>();
+        var disposeBehavior = DisposeBehavior.Ignore;
+        ResilienceContextPool? pool = null;
+
+        var pipeline = new ResiliencePipeline(component, disposeBehavior, pool);
+        pipeline.Pool.Should().Be(ResilienceContextPool.Shared);
+    }
+
+    [Fact]
+    public void Pool_IsPool()
+    {
+        var component = Substitute.For<PipelineComponent>();
+        var disposeBehavior = DisposeBehavior.Ignore;
+        var pool = Substitute.For<ResilienceContextPool>();
+
+        var pipeline = new ResiliencePipeline(component, disposeBehavior, pool);
+        pipeline.Pool.Should().Be(pool);
     }
 
     public class ExecuteParameters<T> : ExecuteParameters

@@ -9,8 +9,8 @@ namespace Polly.CircuitBreaker;
 public sealed class CircuitBreakerManualControl
 {
     private readonly object _lock = new();
-    private readonly HashSet<Func<ResilienceContext, Task>> _onIsolate = new();
-    private readonly HashSet<Func<ResilienceContext, Task>> _onReset = new();
+    private readonly HashSet<Func<ResilienceContext, Task>> _onIsolate = [];
+    private readonly HashSet<Func<ResilienceContext, Task>> _onReset = [];
     private bool _isolated;
 
     /// <summary>
@@ -148,7 +148,7 @@ public sealed class CircuitBreakerManualControl
         }
     }
 
-    private class RegistrationDisposable : IDisposable
+    private sealed class RegistrationDisposable : IDisposable
     {
         private readonly Action _disposeAction;
 

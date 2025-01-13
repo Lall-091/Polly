@@ -1,6 +1,4 @@
-﻿using Polly;
-
-namespace Snippets.Docs;
+﻿namespace Snippets.Docs;
 
 internal static class General
 {
@@ -15,7 +13,7 @@ internal static class General
         ResilienceContext context = ResilienceContextPool.Shared.Get(continueOnCapturedContext: true);
 
         await pipeline.ExecuteAsync(
-            async context =>
+            static async context =>
             {
                 // Execute your code, honoring the ContinueOnCapturedContext setting
                 await MyMethodAsync(context.CancellationToken).ConfigureAwait(context.ContinueOnCapturedContext);
@@ -40,14 +38,14 @@ internal static class General
 
         // Execute your code with cancellation support
         await pipeline.ExecuteAsync(
-            async token => await MyMethodAsync(token),
+            static async token => await MyMethodAsync(token),
             cancellationToken);
 
         // Use ResilienceContext for more advanced scenarios
         ResilienceContext context = ResilienceContextPool.Shared.Get(cancellationToken: cancellationToken);
 
         await pipeline.ExecuteAsync(
-            async context => await MyMethodAsync(context.CancellationToken),
+            static async context => await MyMethodAsync(context.CancellationToken),
             context);
 
         #endregion

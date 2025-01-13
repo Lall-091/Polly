@@ -3,10 +3,9 @@ using Polly.Utils.Pipeline;
 
 namespace Polly.Core.Tests;
 
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-
 public partial class ResiliencePipelineTests
 {
+#pragma warning disable IDE0028
     public static TheoryData<Func<ResiliencePipeline<string>, ValueTask>> ExecuteAsyncGenericStrategyData = new()
     {
         async strategy =>
@@ -35,7 +34,7 @@ public partial class ResiliencePipelineTests
 
         async strategy =>
         {
-            var context = ResilienceContextPool.Shared.Get();
+            var context = ResilienceContextPool.Shared.Get(CancellationToken);
             context.CancellationToken = CancellationToken;
             (await strategy.ExecuteAsync(
                 (context, state) =>
@@ -50,7 +49,7 @@ public partial class ResiliencePipelineTests
 
         async strategy =>
         {
-            var context = ResilienceContextPool.Shared.Get();
+            var context = ResilienceContextPool.Shared.Get(CancellationToken);
             context.CancellationToken = CancellationToken;
             (await strategy.ExecuteAsync(
                 (context) =>
@@ -59,11 +58,14 @@ public partial class ResiliencePipelineTests
                     return new ValueTask<string>("res");
                 },
                 context)).Should().Be("res");
-        }
+        },
     };
+#pragma warning restore IDE0028
 
-    [MemberData(nameof(ExecuteAsyncGenericStrategyData))]
     [Theory]
+#pragma warning disable xUnit1044 // Avoid using TheoryData type arguments that are not serializable
+    [MemberData(nameof(ExecuteAsyncGenericStrategyData))]
+#pragma warning restore xUnit1044 // Avoid using TheoryData type arguments that are not serializable
     public async Task ExecuteAsync_GenericStrategy_Ok(Func<ResiliencePipeline<string>, ValueTask> execute)
     {
         var pipeline = new ResiliencePipeline<string>(PipelineComponentFactory.FromStrategy(new TestResilienceStrategy
@@ -71,10 +73,10 @@ public partial class ResiliencePipelineTests
             Before = (c, _) =>
             {
                 c.IsSynchronous.Should().BeFalse();
-                c.ResultType.Should().Be(typeof(string));
+                c.ResultType.Should().Be<string>();
                 c.CancellationToken.CanBeCanceled.Should().BeTrue();
             },
-        }), DisposeBehavior.Allow);
+        }), DisposeBehavior.Allow, null);
 
         await execute(pipeline);
     }
@@ -86,10 +88,10 @@ public partial class ResiliencePipelineTests
         {
             state.Should().Be("state");
             context.IsSynchronous.Should().BeFalse();
-            context.ResultType.Should().Be(typeof(int));
+            context.ResultType.Should().Be<int>();
             return Outcome.FromResultAsValueTask(12345);
         },
-        ResilienceContextPool.Shared.Get(),
+        ResilienceContextPool.Shared.Get(CancellationToken),
         "state");
 
         result.Result.Should().Be(12345);

@@ -6,8 +6,6 @@ using Polly.Utils.Pipeline;
 
 namespace Polly.Core.Tests.Utils.Pipeline;
 
-#pragma warning disable CA2000 // Dispose objects before losing scope
-
 public class CompositePipelineComponentTests
 {
     private readonly ResilienceStrategyTelemetry _telemetry;
@@ -42,6 +40,7 @@ public class CompositePipelineComponentTests
     [Fact]
     public async Task Create_EnsureExceptionsNotWrapped()
     {
+        var context = ResilienceContextPool.Shared.Get();
         var components = new[]
         {
             PipelineComponentFactory.FromStrategy(new TestResilienceStrategy { Before =  (_, _) => throw new NotSupportedException() }),
@@ -50,7 +49,7 @@ public class CompositePipelineComponentTests
 
         var pipeline = CreateSut(components);
         await pipeline
-            .Invoking(p => p.ExecuteCore((_, _) => Outcome.FromResultAsValueTask(10), ResilienceContextPool.Shared.Get(), "state").AsTask())
+            .Invoking(p => p.ExecuteCore((_, _) => Outcome.FromResultAsValueTask(10), context, "state").AsTask())
             .Should()
             .ThrowAsync<NotSupportedException>();
     }
@@ -68,9 +67,9 @@ public class CompositePipelineComponentTests
 
         var pipeline = CreateSut(components);
 
-        CreateSut(new PipelineComponent[] { PipelineComponent.Empty, pipeline });
+        CreateSut([PipelineComponent.Empty, pipeline]);
 
-        this.Invoking(_ => CreateSut(new PipelineComponent[] { PipelineComponent.Empty, pipeline }))
+        this.Invoking(_ => CreateSut([PipelineComponent.Empty, pipeline]))
             .Should()
             .NotThrow();
     }
@@ -86,7 +85,7 @@ public class CompositePipelineComponentTests
             PipelineComponentFactory.FromStrategy(new TestResilienceStrategy()),
         };
 
-        var pipeline = new ResiliencePipeline(CreateSut(strategies, new FakeTimeProvider()), DisposeBehavior.Allow);
+        var pipeline = new ResiliencePipeline(CreateSut(strategies, new FakeTimeProvider()), DisposeBehavior.Allow, null);
         var context = ResilienceContextPool.Shared.Get();
         context.CancellationToken = cancellation.Token;
 
@@ -104,7 +103,7 @@ public class CompositePipelineComponentTests
             PipelineComponentFactory.FromStrategy(new TestResilienceStrategy { Before = (_, _) => { executed = true; cancellation.Cancel(); } }),
             PipelineComponentFactory.FromStrategy(new TestResilienceStrategy()),
         };
-        var pipeline = new ResiliencePipeline(CreateSut(strategies, new FakeTimeProvider()), DisposeBehavior.Allow);
+        var pipeline = new ResiliencePipeline(CreateSut(strategies, new FakeTimeProvider()), DisposeBehavior.Allow, null);
         var context = ResilienceContextPool.Shared.Get();
         context.CancellationToken = cancellation.Token;
 
@@ -118,7 +117,7 @@ public class CompositePipelineComponentTests
     {
         var timeProvider = new FakeTimeProvider();
 
-        var pipeline = new ResiliencePipeline(CreateSut(new[] { Substitute.For<PipelineComponent>() }, timeProvider), DisposeBehavior.Allow);
+        var pipeline = new ResiliencePipeline(CreateSut([Substitute.For<PipelineComponent>()], timeProvider), DisposeBehavior.Allow, null);
         pipeline.Execute(() => { timeProvider.Advance(TimeSpan.FromHours(1)); });
 
         _listener.Events.Should().HaveCount(2);
@@ -132,7 +131,7 @@ public class CompositePipelineComponentTests
         var a = Substitute.For<PipelineComponent>();
         var b = Substitute.For<PipelineComponent>();
 
-        var composite = CreateSut(new[] { a, b });
+        var composite = CreateSut([a, b]);
         await composite.FirstComponent.DisposeAsync();
         await composite.DisposeAsync();
 
@@ -140,8 +139,6 @@ public class CompositePipelineComponentTests
         await b.Received(1).DisposeAsync();
     }
 
-    private CompositeComponent CreateSut(PipelineComponent[] components, TimeProvider? timeProvider = null)
-    {
-        return (CompositeComponent)PipelineComponentFactory.CreateComposite(components, _telemetry, timeProvider ?? Substitute.For<TimeProvider>());
-    }
+    private CompositeComponent CreateSut(PipelineComponent[] components, TimeProvider? timeProvider = null) =>
+        (CompositeComponent)PipelineComponentFactory.CreateComposite(components, _telemetry, timeProvider ?? Substitute.For<TimeProvider>());
 }
